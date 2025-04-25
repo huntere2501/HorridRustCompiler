@@ -321,7 +321,7 @@ impl <'a> Lexer<'a>{
 
     fn is_identifier(&mut self) -> bool{
         let identifier = self.check_value();
-        if KEYWORDS.get(&*identifier).cloned().is_none() && OPERATORS.get(&*identifier).cloned().is_none() {
+        if KEYWORDS.get(&*identifier).cloned().is_none() && OPERATORS.get(&*identifier).cloned().is_none() && !identifier.is_empty() {
            true
         }
         else{
