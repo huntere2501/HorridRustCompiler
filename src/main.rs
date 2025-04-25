@@ -1,4 +1,5 @@
 mod lexer_scanner;
+mod syntax_parser;
 
 fn main() {
     let input  = "if 80 8.0 hunter";

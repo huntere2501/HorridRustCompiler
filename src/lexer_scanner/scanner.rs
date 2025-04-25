@@ -123,7 +123,7 @@ static OPERATORS: phf::Map<&'static str, Operators> = phf_map! {
 
 // Enum of different types a token might be, covers most options for now.
 #[derive(Debug)]
-enum TokenType {
+pub(crate) enum TokenType {
     // Primitive token types
     Integer(i64),
     Float(f64),// Numeric values
@@ -139,9 +139,9 @@ enum TokenType {
 
 #[derive(Debug)]
 pub struct TextSpan {
-    start: usize,
-    end: usize,
-    literal : String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) literal : String,
 }
 
 impl TextSpan {
@@ -156,8 +156,8 @@ impl TextSpan {
 // Token Struct to construct Token Values
 #[derive(Debug)]
 pub struct Token {
-    kind: TokenType,
-    span: TextSpan,
+    pub(crate) kind: TokenType,
+    pub(crate) span: TextSpan,
 }
 
 impl Token {
