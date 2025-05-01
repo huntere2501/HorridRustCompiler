@@ -7,9 +7,8 @@ It will also need to work with the error_handler to call errors when they are fo
 My Thought process:
 Use reg expressions to read through values.
 search until value is found.
-convert to tokentype and token with it.
+convert to token type and token with it.
 */
-use std::collections::HashMap;
 use phf::phf_map;
 
 #[derive(Clone)]
@@ -122,7 +121,7 @@ static OPERATORS: phf::Map<&'static str, Operators> = phf_map! {
 };
 
 // Enum of different types a token might be, covers most options for now.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub(crate) enum TokenType {
     // Primitive token types
     Integer(i64),
@@ -137,7 +136,7 @@ pub(crate) enum TokenType {
     EOF
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TextSpan {
     pub(crate) start: usize,
     pub(crate) end: usize,
@@ -154,7 +153,7 @@ impl TextSpan {
     }
 }
 // Token Struct to construct Token Values
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub(crate) kind: TokenType,
     pub(crate) span: TextSpan,
@@ -166,7 +165,7 @@ impl Token {
     }
 }
 // The Lexer structure will be used identify the main parts of a value, will stop based on delimiter.
-pub struct Lexer<'a> {
+pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
 }
