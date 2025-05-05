@@ -7,20 +7,16 @@ pub struct Parser{
 }
 
 impl Parser{
-    pub fn new() -> Self{
-        Self { tokens: Vec::new(), current: 0}
+    pub fn new(tokens: Vec<Token>) -> Self{
+        Self { tokens: tokens.iter().filter(
+            |token| token.kind != TokenType::WhiteSpace
+        ).map(|token| token.clone()).collect(), current: 0}
     }
 
-    pub fn from_tokens(tokens: Vec<Token>) -> Self {
-        Self {tokens, current: 0}
-    }
-
-    pub fn from_input(input: &str) -> Self {
-        // Lexer import is not working correctly.
-        // Lookup mods and crates in Rust.
+    pub fn from_tokens(input: &str) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
-        while let Some(token) = lexer.next_token() {
+        while let Some(token) = lexer.next_token(){
             tokens.push(token);
         }
         Self {tokens, current: 0}
