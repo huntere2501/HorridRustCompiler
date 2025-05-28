@@ -60,6 +60,15 @@ pub trait ASTVisitor {
             ASTExpressionKind::Keyword(keyword) => {
                 self.visit_keyword(keyword);
             }
+            ASTExpressionKind::Delimiter(delimiter) => {
+                self.visit_delimiter(delimiter);
+            }
+            ASTExpressionKind::Whitespace(whitespace) => {
+                self.visit_whitespace(whitespace);
+            }
+            ASTExpressionKind::Comment(comment) => {
+                self.visit_comments(comment);
+            }
 
             _ => {}
         }
@@ -69,11 +78,13 @@ pub trait ASTVisitor {
     }
 
     fn visit_integer(&mut self, number: &ASTIntegerExpression);
-    fn visit_float(&mut self, number: &ASTFloatExpression);
-    fn visit_identifier(&mut self, number: &ASTIdentifierExpression);
-    fn visit_operator(&mut self, number: &ASTOperatorExpression);
-    fn visit_keyword(&mut self, number: &ASTKeywordExpression);
-
+    fn visit_float(&mut self, float: &ASTFloatExpression);
+    fn visit_identifier(&mut self, identifier: &ASTIdentifierExpression);
+    fn visit_operator(&mut self, operator: &ASTOperatorExpression);
+    fn visit_keyword(&mut self, keyword: &ASTKeywordExpression);
+    fn visit_delimiter(&mut self, delimiter: &ASTDelimiterExpression);
+    fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression);
+    fn visit_comments(&mut self, comment: &ASTCommentExpression);
 }
 // Prints out the AST when it is completed.
 pub struct ASTPrinter {
@@ -111,6 +122,15 @@ impl ASTVisitor for ASTPrinter{
     fn visit_keyword(&mut self, keyword: &ASTKeywordExpression) {
         self.print_with_indent(&format!("Keyword: {}", keyword.keyword));
     }
+    fn visit_delimiter(&mut self, delimiter: &ASTDelimiterExpression) {
+        self.print_with_indent(&format!("Delimiter: {}", delimiter.delimiter));
+    }
+    fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression) {
+        self.print_with_indent(&format!("Whitespace: {}", whitespace.whitespace));
+    }
+    fn visit_comments(&mut self, comment: &ASTCommentExpression) {
+        self.print_with_indent(&format!("Comment: {}", comment.comment));
+    }
 
 }
 
@@ -137,34 +157,6 @@ impl ASTStatement {
         ASTStatement::new(ASTStatementKind::Expression(expr))
     }
 }
-// KEEPING AS AN EXAMPLE
-// #[derive(Debug)]
-// pub enum ASTBinaryOperatorKind{
-//     Plus,
-//     Minus,
-//     Multiply,
-//     Divide
-// }
-//
-// pub struct ASTBinaryOperator{
-//     kind: ASTBinaryOperatorKind,
-//     token: Token,
-// }
-//
-// impl ASTBinaryOperator{
-//     pub fn new(kind: ASTBinaryOperatorKind, token: Token) -> Self{
-//         ASTBinaryOperator {kind, token}
-//     }
-//
-//     pub fn precedence(&self) -> u8{
-//         match self.kind {
-//             ASTBinaryOperatorKind::Plus => 1,
-//             ASTBinaryOperatorKind::Minus => 1,
-//             ASTBinaryOperatorKind::Multiply => 2,
-//             ASTBinaryOperatorKind::Divide => 2,
-//         }
-//     }
-// }
 
 pub struct ASTIntegerExpression{
     number: i64,
@@ -180,6 +172,15 @@ pub struct ASTOperatorExpression{
 }
 pub struct ASTKeywordExpression{
     keyword: String,
+}
+pub struct ASTDelimiterExpression{
+    delimiter: String,
+}
+pub struct ASTWhitespaceExpression{
+    whitespace: String,
+}
+pub struct ASTCommentExpression{
+    comment: String,
 }
 
 pub enum ASTExpressionKind {
@@ -197,6 +198,15 @@ pub enum ASTExpressionKind {
     ),
     Keyword(
         ASTKeywordExpression
+    ),
+    Delimiter(
+        ASTDelimiterExpression
+    ),
+    Whitespace(
+        ASTWhitespaceExpression
+    ),
+    Comment(
+        ASTCommentExpression
     ),
 }
 

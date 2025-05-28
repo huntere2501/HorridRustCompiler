@@ -13,7 +13,7 @@ use crate::syntax_parser::parser::Parser;
 
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs.
-    let input  = "break";
+    let input  = "2 + 5";
     // let mut lexer  = Lexer::new(input);
     // let mut tokens = Vec::new();
     // while let Some(token) = lexer.next_token(){
@@ -21,7 +21,6 @@ fn main() {
     // }
     let mut ast: Ast = Ast::new();
     let mut parser: Parser = Parser::from_tokens(input);
-    // Statements aren't being added to which means next statement isn't working.
     while let Some(stmt) = parser.next_statement(){
         ast.add_statement(stmt);
     }
