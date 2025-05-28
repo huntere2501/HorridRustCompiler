@@ -170,11 +170,6 @@ pub(crate) struct Lexer<'a> {
     current_position: usize,
 }
 
-
-//++++++++++++++++++++++++++++++++++++
-// NEXT ITS TIME TO UPDATE/ADD VALUES SINCE THE BASIC LOGIC IS DOWN!.
-//++++++++++++++++++++++++++++++++++++
-
 // Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
     pub fn new(input: & 'a str) -> Self {

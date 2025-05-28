@@ -5,7 +5,8 @@ pub mod parser;
 pub struct Ast {
     pub statements: Vec<ASTStatement>
 }
-
+// Implementing the abstract syntax tree class.
+// Essentially a vector of ast statements.
 impl Ast {
     pub fn new() -> Self{
         Self{statements:Vec::new()}
@@ -47,9 +48,19 @@ pub trait ASTVisitor {
             ASTExpressionKind::Integer(number) => {
                 self.visit_integer(number);
             }
-            ASTExpressionKind::Binary(expr) => {
-                self.visit_binary_expression(expr);
+            ASTExpressionKind::Float(float) => {
+                self.visit_float(float);
             }
+            ASTExpressionKind::Identifier(identifier) => {
+                self.visit_identifier(identifier);
+            }
+            ASTExpressionKind::Operator(operator) => {
+                self.visit_operator(operator);
+            }
+            ASTExpressionKind::Keyword(keyword) => {
+                self.visit_keyword(keyword);
+            }
+
             _ => {}
         }
     }
@@ -58,13 +69,13 @@ pub trait ASTVisitor {
     }
 
     fn visit_integer(&mut self, number: &ASTIntegerExpression);
+    fn visit_float(&mut self, number: &ASTFloatExpression);
+    fn visit_identifier(&mut self, number: &ASTIdentifierExpression);
+    fn visit_operator(&mut self, number: &ASTOperatorExpression);
+    fn visit_keyword(&mut self, number: &ASTKeywordExpression);
 
-    fn visit_binary_expression(&mut self, binary_expression: &ASTBinaryExpression) {
-        self.visit_expression(&binary_expression.left);
-        self.visit_expression(&binary_expression.right);
-    }
 }
-
+// Prints out the AST when it is completed.
 pub struct ASTPrinter {
     indent: usize,
 }
@@ -88,6 +99,19 @@ impl ASTVisitor for ASTPrinter{
     fn visit_integer(&mut self, number: &ASTIntegerExpression) {
         self.print_with_indent(&format!("Number: {}", number.number));
     }
+    fn visit_float(&mut self, float: &ASTFloatExpression) {
+        self.print_with_indent(&format!("Float: {}", float.float));
+    }
+    fn visit_identifier(&mut self, identifier: &ASTIdentifierExpression) {
+        self.print_with_indent(&format!("Identifier: {}", identifier.identifier));
+    }
+    fn visit_operator(&mut self, operator: &ASTOperatorExpression) {
+        self.print_with_indent(&format!("Operator: {}", operator.operator));
+    }
+    fn visit_keyword(&mut self, keyword: &ASTKeywordExpression) {
+        self.print_with_indent(&format!("Keyword: {}", keyword.keyword));
+    }
+
 }
 
 impl ASTPrinter{
@@ -113,69 +137,93 @@ impl ASTStatement {
         ASTStatement::new(ASTStatementKind::Expression(expr))
     }
 }
-#[derive(Debug)]
-pub enum ASTBinaryOperatorKind{
-    Plus,
-    Minus,
-    Multiply,
-    Divide
+// KEEPING AS AN EXAMPLE
+// #[derive(Debug)]
+// pub enum ASTBinaryOperatorKind{
+//     Plus,
+//     Minus,
+//     Multiply,
+//     Divide
+// }
+//
+// pub struct ASTBinaryOperator{
+//     kind: ASTBinaryOperatorKind,
+//     token: Token,
+// }
+//
+// impl ASTBinaryOperator{
+//     pub fn new(kind: ASTBinaryOperatorKind, token: Token) -> Self{
+//         ASTBinaryOperator {kind, token}
+//     }
+//
+//     pub fn precedence(&self) -> u8{
+//         match self.kind {
+//             ASTBinaryOperatorKind::Plus => 1,
+//             ASTBinaryOperatorKind::Minus => 1,
+//             ASTBinaryOperatorKind::Multiply => 2,
+//             ASTBinaryOperatorKind::Divide => 2,
+//         }
+//     }
+// }
+
+pub struct ASTIntegerExpression{
+    number: i64,
 }
-
-pub struct ASTBinaryOperator{
-    kind: ASTBinaryOperatorKind,
-    token: Token,
+pub struct ASTFloatExpression{
+    float: f64,
 }
-
-impl ASTBinaryOperator{
-    pub fn new(kind: ASTBinaryOperatorKind, token: Token) -> Self{
-        ASTBinaryOperator {kind, token}
-    }
-
-    pub fn precedence(&self) -> u8{
-        match self.kind {
-            ASTBinaryOperatorKind::Plus => 1,
-            ASTBinaryOperatorKind::Minus => 1,
-            ASTBinaryOperatorKind::Multiply => 2,
-            ASTBinaryOperatorKind::Divide => 2,
-        }
-    }
+pub struct ASTIdentifierExpression{
+    identifier: String,
+}
+pub struct ASTOperatorExpression{
+    operator: String,
+}
+pub struct ASTKeywordExpression{
+    keyword: String,
 }
 
 pub enum ASTExpressionKind {
     Integer(
         ASTIntegerExpression
     ),
-    Binary(
-        ASTBinaryExpression
-    )
-}
-
-pub struct ASTIntegerExpression{
-    number: i64,
-}
-
-pub struct ASTBinaryExpression{
-    left: Box<ASTExpression>,
-    operator: ASTBinaryOperator,
-    right: Box<ASTExpression>,
+    Float(
+        ASTFloatExpression
+    ),
+    Identifier(
+        ASTIdentifierExpression
+    ),
+    Operator(
+        ASTOperatorExpression
+    ),
+    Keyword(
+        ASTKeywordExpression
+    ),
 }
 
 pub struct ASTExpression{
     kind: ASTExpressionKind
 }
 
+// Will be used to take in tokens/tokentypes assign them the correct spot in the AST.
 impl ASTExpression {
     // Need to add other values to the EXPRESSIONS
     pub fn new(kind: ASTExpressionKind)-> Self{
         ASTExpression{kind}
     }
-
     // Going to have to change this to integer when adding float values.
     pub fn number(number: i64) -> Self {
         ASTExpression::new(ASTExpressionKind::Integer(ASTIntegerExpression{number}))
     }
-
-    pub fn binary(operator: ASTBinaryOperator, left:ASTExpression, right:ASTExpression) -> Self{
-        ASTExpression::new(ASTExpressionKind::Binary(ASTBinaryExpression{left: Box::new(left), operator, right:Box::new(right) }))
+    pub fn float(float: f64) -> Self {
+        ASTExpression::new(ASTExpressionKind::Float(ASTFloatExpression{float}))
+    }
+    pub fn identifier(identifier: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression{identifier}))
+    }
+    pub fn operator(operator: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Operator(ASTOperatorExpression{operator}))
+    }
+    pub fn keyword(keyword: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Keyword(ASTKeywordExpression{keyword}))
     }
 }
