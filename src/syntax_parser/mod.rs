@@ -1,5 +1,3 @@
-use crate::lexer_scanner::scanner::{Token};
-
 pub mod parser;
 
 pub struct Ast {
@@ -60,17 +58,9 @@ pub trait ASTVisitor {
             ASTExpressionKind::Keyword(keyword) => {
                 self.visit_keyword(keyword);
             }
-            ASTExpressionKind::Delimiter(delimiter) => {
-                self.visit_delimiter(delimiter);
-            }
             ASTExpressionKind::Whitespace(whitespace) => {
                 self.visit_whitespace(whitespace);
             }
-            ASTExpressionKind::Comment(comment) => {
-                self.visit_comments(comment);
-            }
-
-            _ => {}
         }
     }
     fn visit_expression(&mut self, expression: &ASTExpression) {
@@ -82,9 +72,7 @@ pub trait ASTVisitor {
     fn visit_identifier(&mut self, identifier: &ASTIdentifierExpression);
     fn visit_operator(&mut self, operator: &ASTOperatorExpression);
     fn visit_keyword(&mut self, keyword: &ASTKeywordExpression);
-    fn visit_delimiter(&mut self, delimiter: &ASTDelimiterExpression);
     fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression);
-    fn visit_comments(&mut self, comment: &ASTCommentExpression);
 }
 // Prints out the AST when it is completed.
 pub struct ASTPrinter {
@@ -122,14 +110,8 @@ impl ASTVisitor for ASTPrinter{
     fn visit_keyword(&mut self, keyword: &ASTKeywordExpression) {
         self.print_with_indent(&format!("Keyword: {}", keyword.keyword));
     }
-    fn visit_delimiter(&mut self, delimiter: &ASTDelimiterExpression) {
-        self.print_with_indent(&format!("Delimiter: {}", delimiter.delimiter));
-    }
     fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression) {
-        self.print_with_indent(&format!("Whitespace: {}", whitespace.whitespace));
-    }
-    fn visit_comments(&mut self, comment: &ASTCommentExpression) {
-        self.print_with_indent(&format!("Comment: {}", comment.comment));
+        self.print_with_indent(&format!("Whitespace: "));
     }
 
 }
@@ -157,32 +139,31 @@ impl ASTStatement {
         ASTStatement::new(ASTStatementKind::Expression(expr))
     }
 }
-
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTIntegerExpression{
     number: i64,
 }
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTFloatExpression{
     float: f64,
 }
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTIdentifierExpression{
     identifier: String,
 }
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTOperatorExpression{
     operator: String,
 }
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTKeywordExpression{
     keyword: String,
 }
-pub struct ASTDelimiterExpression{
-    delimiter: String,
-}
+#[derive(Debug, PartialEq, Clone)]
 pub struct ASTWhitespaceExpression{
-    whitespace: String,
-}
-pub struct ASTCommentExpression{
-    comment: String,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum ASTExpressionKind {
     Integer(
         ASTIntegerExpression
@@ -199,15 +180,10 @@ pub enum ASTExpressionKind {
     Keyword(
         ASTKeywordExpression
     ),
-    Delimiter(
-        ASTDelimiterExpression
-    ),
     Whitespace(
         ASTWhitespaceExpression
     ),
-    Comment(
-        ASTCommentExpression
-    ),
+
 }
 
 pub struct ASTExpression{
@@ -235,5 +211,8 @@ impl ASTExpression {
     }
     pub fn keyword(keyword: String) -> Self {
         ASTExpression::new(ASTExpressionKind::Keyword(ASTKeywordExpression{keyword}))
+    }
+    pub fn whitespace() -> Self {
+        ASTExpression::new(ASTExpressionKind::Whitespace(ASTWhitespaceExpression{}))
     }
 }

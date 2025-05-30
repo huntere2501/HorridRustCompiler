@@ -1,4 +1,4 @@
-use crate::syntax_parser::{ASTExpression, ASTFloatExpression, ASTIdentifierExpression, ASTIntegerExpression, ASTKeywordExpression, ASTOperatorExpression, ASTStatement};
+use crate::syntax_parser::{ASTExpression, ASTStatement};
 use crate::lexer_scanner::scanner::{Lexer, Token, TokenType};
 
 pub struct Parser{
@@ -51,6 +51,9 @@ impl Parser{
             }
             TokenType::Keyword(keyword) =>{
                 Some(ASTExpression::keyword(String::from(keyword)))
+            }
+            TokenType::WhiteSpace =>{
+                Some(ASTExpression::whitespace())
             }
             _ => {
                 None

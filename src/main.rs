@@ -11,6 +11,11 @@ use crate::syntax_parser::parser::Parser;
 // - Need to add delims, comments, and eof to parser.
 // - Need to check syntax of original code.
 
+
+// MOST IMPORTANT:
+// - NEED TO IMPLEMENT DELIMS AND COMMENTS,
+// - Will have to go back and fix the scanner for delim and comment.
+
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs.
     let input  = "2 + 5";
