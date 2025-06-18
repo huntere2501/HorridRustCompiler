@@ -61,6 +61,12 @@ pub trait ASTVisitor {
             ASTExpressionKind::Whitespace(whitespace) => {
                 self.visit_whitespace(whitespace);
             }
+            ASTExpressionKind::Delimiter(delimiter) => {
+                self.visit_delimiter(delimiter);
+            }
+            ASTExpressionKind::Comment(comment) => {
+                self.visit_comment(comment);
+            }
         }
     }
     fn visit_expression(&mut self, expression: &ASTExpression) {
@@ -73,6 +79,8 @@ pub trait ASTVisitor {
     fn visit_operator(&mut self, operator: &ASTOperatorExpression);
     fn visit_keyword(&mut self, keyword: &ASTKeywordExpression);
     fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression);
+    fn visit_delimiter(&mut self, whitespace: &ASTDelimiterExpression);
+    fn visit_comment(&mut self, whitespace: &ASTCommentExpression);
 }
 // Prints out the AST when it is completed.
 pub struct ASTPrinter {
@@ -111,7 +119,13 @@ impl ASTVisitor for ASTPrinter{
         self.print_with_indent(&format!("Keyword: {}", keyword.keyword));
     }
     fn visit_whitespace(&mut self, whitespace: &ASTWhitespaceExpression) {
-        self.print_with_indent(&format!("Whitespace: "));
+        self.print_with_indent(&"Whitespace: ".to_string());
+    }
+    fn visit_delimiter(&mut self, delimiter: &ASTDelimiterExpression) {
+        self.print_with_indent(&format!("Delimiter: {}", delimiter.delimiter));
+    }
+    fn visit_comment(&mut self, comment: &ASTCommentExpression) {
+        self.print_with_indent(&format!("Comment: {}", comment.comment));
     }
 
 }
@@ -162,6 +176,15 @@ pub struct ASTKeywordExpression{
 #[derive(Debug, PartialEq, Clone)]
 pub struct ASTWhitespaceExpression{
 }
+#[derive(Debug, PartialEq, Clone)]
+pub struct ASTDelimiterExpression{
+    delimiter: String,
+}
+#[derive(Debug, PartialEq, Clone)]
+pub struct ASTCommentExpression{
+    comment: String,
+}
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ASTExpressionKind {
@@ -182,6 +205,12 @@ pub enum ASTExpressionKind {
     ),
     Whitespace(
         ASTWhitespaceExpression
+    ),
+    Delimiter(
+        ASTDelimiterExpression
+    ),
+    Comment(
+        ASTCommentExpression
     ),
 
 }
@@ -214,5 +243,11 @@ impl ASTExpression {
     }
     pub fn whitespace() -> Self {
         ASTExpression::new(ASTExpressionKind::Whitespace(ASTWhitespaceExpression{}))
+    }
+    pub fn delimiter(delimiter: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Delimiter(ASTDelimiterExpression{delimiter}))
+    }
+    pub fn comment(comment: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Comment(ASTCommentExpression{comment}))
     }
 }

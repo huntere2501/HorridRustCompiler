@@ -3,13 +3,8 @@ The Lexical Analyzer breaks up code into tokens, and runs operations based on th
 It will have to break up the values by type, operator, delimiter, numerics, strings, etc.
 It will also need to work with the error_handler to call errors when they are found.
 */
-/*
-My Thought process:
-Use reg expressions to read through values.
-search until value is found.
-convert to token type and token with it.
-*/
 use phf::phf_map;
+use regex::Regex;
 
 #[derive(Clone)]
 pub enum Keyword {
@@ -129,9 +124,9 @@ pub(crate) enum TokenType {
     Identifier(String),    // Variable/function names
     Operator(String),      // Mathematical or logical operators
     Keyword(String),       // Reserved language words
-    Delimiter,     // Punctuation like parentheses or semicolons
+    Delimiter(String),     // Punctuation like parentheses or semicolons
     WhiteSpace,    // Spaces, tabs, newlines
-    Comment,
+    Comment(String),
     Unknown,
     EOF
 }
@@ -169,6 +164,7 @@ pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
 }
+
 
 // Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -218,11 +214,11 @@ impl <'a> Lexer<'a>{
             }
             else if Self::is_delimiter(&c) {
                 self.consume();
-                kind = TokenType::Delimiter;
+                kind = TokenType::Delimiter(String::from(c));
             }
             else if Self::is_comment(&c){
-                self.get_comment();
-                kind = TokenType::Comment;
+                let comment:String = self.get_comment();
+                kind = TokenType::Comment(String::from(comment));
             }
 
             let end = self.current_position;
@@ -236,6 +232,9 @@ impl <'a> Lexer<'a>{
     fn current_char(&self) -> Option<char> {
         self.input.chars().nth(self.current_position)
     }
+    fn next_char(&self) -> Option<char> {
+        self.input.chars().nth(self.current_position+1)
+    }
 
     // For grabbing the current character
     fn consume(&mut self) -> Option<char>{
@@ -246,19 +245,31 @@ impl <'a> Lexer<'a>{
         self.current_position += 1;
         c
     }
-
-    // For checking an entire value up to whitespace
+    // Ex: *var*5
+    // Read until we hit a new type of token
+    // Need to fix the way I am checking values for next time.
     fn check_value(&mut self) -> String {
         let mut add_string = String::new();
         let mut count = 0;
         while let Some(mut value) = self.current_char(){
-            if !value.is_whitespace(){
+            let next_val  = self.next_char();
+            if next_val == Option::from('*') || next_val == Option::from('&') {
                 value = self.consume().unwrap();
                 add_string.push(value);
                 count += 1;
-            }
-            else{
                 break
+            }
+            if value == '*' || value == '&'{
+                value = self.consume().unwrap();
+                add_string.push(value);
+                count += 1;
+                break
+            }
+            else if !value.is_whitespace(){
+                // Match statement to handle regex?
+                value = self.consume().unwrap();
+                add_string.push(value);
+                count += 1;
             }
         }
         self.current_position -= count;
@@ -266,15 +277,24 @@ impl <'a> Lexer<'a>{
     }
 
     // For grabbing an entire value up to whitespace.
+    // Check value should give a value to consume value.
     fn consume_value(&mut self) -> String {
         let mut add_string = String::new();
         while let Some(mut value) = self.current_char(){
-            if !value.is_whitespace(){
+            let next_val  = self.next_char();
+            if next_val == Option::from('*') || next_val == Option::from('&') {
                 value = self.consume().unwrap();
                 add_string.push(value);
-            }
-            else{
                 break
+            }
+            if value == '*' || value == '&'{
+                value = self.consume().unwrap();
+                add_string.push(value);
+                break
+            }
+            else if !value.is_whitespace(){
+                value = self.consume().unwrap();
+                add_string.push(value);
             }
         }
         add_string
@@ -315,7 +335,11 @@ impl <'a> Lexer<'a>{
 
     fn is_identifier(&mut self) -> bool{
         let identifier = self.check_value();
-        if KEYWORDS.get(&*identifier).cloned().is_none() && OPERATORS.get(&*identifier).cloned().is_none() && !identifier.is_empty() {
+        let word_reg = Regex::new(r"[a-zA-Z_]+").unwrap();
+        if (identifier == "*" || identifier == "&") && word_reg.is_match(&*self.next_char().unwrap().to_string()){
+            true
+        }
+        else if KEYWORDS.get(&*identifier).cloned().is_none() && OPERATORS.get(&*identifier).cloned().is_none() && !identifier.is_empty() {
            true
         }
         else{
@@ -350,6 +374,22 @@ impl <'a> Lexer<'a>{
         float
     }
 
+    fn build_keyword_number_regex(&mut self, keywords: phf::Map<&'static str, Keyword>) -> String {
+        let mut keys: Vec<&str> = keywords.keys().copied().collect();
+
+        // Sort by length (longest first) to handle overlapping operators correctly
+        // This ensures "==" is matched before "=" if both exist
+        keys.sort_by(|a, b| b.len().cmp(&a.len()));
+
+        // Escape special regex characters
+        let escaped_keys: Vec<String> = keys.iter()
+            .map(|&key| regex::escape(key))
+            .collect();
+
+        // Join with | (alternation) and add number pattern
+        format!("({})", escaped_keys.join("|"))
+    }
+
     fn is_keyword(&mut self) -> bool {
         let mut comp_str: String = self.check_value();
         if KEYWORDS.get(&*comp_str).cloned().is_some() {
@@ -364,9 +404,31 @@ impl <'a> Lexer<'a>{
         comp_str
     }
 
+    fn build_operator_number_regex(&mut self, operators: phf::Map<&'static str, Operators>) -> String {
+        let mut keys: Vec<&str> = operators.keys().copied().collect();
+
+        // Sort by length (longest first) to handle overlapping operators correctly
+        // This ensures "==" is matched before "=" if both exist
+        keys.sort_by(|a, b| b.len().cmp(&a.len()));
+
+        // Escape special regex characters
+        let escaped_keys: Vec<String> = keys.iter()
+            .map(|&key| regex::escape(key))
+            .collect();
+
+        // Join with | (alternation) and add number pattern
+        format!("({})[0-9]+", escaped_keys.join("|"))
+    }
+
     fn is_operator(&mut self) -> bool {
         let operator: String = self.check_value();
-        if OPERATORS.get(&*operator).cloned().is_some() {
+        let num_reg = Regex::new(r"[0-9_]+").unwrap();
+        let op_grab = self.build_operator_number_regex(*OPERATORS);
+        let op_reg = Regex::new(&op_grab);
+        if operator == "*" && num_reg.is_match(&*self.next_char().unwrap().to_string()){
+            true
+        }
+        else if OPERATORS.get(&*operator).cloned().is_some() {
             true
         } else {
             false
@@ -377,5 +439,4 @@ impl <'a> Lexer<'a>{
         let operator: String = self.consume_value();
         operator
     }
-
 }
