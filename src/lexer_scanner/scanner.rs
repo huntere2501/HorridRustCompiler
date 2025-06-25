@@ -115,17 +115,52 @@ static OPERATORS: phf::Map<&'static str, Operators> = phf_map! {
     "/=" => Operators::DIVIDE_EQUALS,
 };
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum DocStyle {
+    /// Used to handle all types of comment types that Rust has.
+    Outer,
+    Inner,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Base {
+    /// Handles all integer base types.
+    Binary = 2,
+    Octal = 8,
+    Decimal = 10,
+    Hexadecimal = 16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LiteralKind {
+    /// Anything terminated represents items that need to have null termination == "/0"
+    Int { base: Base, empty_int: bool },
+    Float { base: Base, empty_exponent: bool },
+    Char { terminated: bool },
+    Byte { terminated: bool },
+    Str { terminated: bool },
+    ByteStr { terminated: bool },
+    CStr { terminated: bool },
+    RawStr { n_hashes: Option<u8> },
+    RawByteStr { n_hashes: Option<u8> },
+    RawCStr { n_hashes: Option<u8> },
+}
+
 // Enum of different types a token might be, covers most options for now.
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum TokenType {
-    // Primitive token types
-    Integer(i64),
-    Float(f64),// Numeric values
+    LineComment {
+        doc_style: Option<DocStyle>,
+    },
+    BlockComment {
+        doc_style: Option<DocStyle>,
+        terminated: bool,
+    },
+    WhiteSpace,    // Spaces, tabs, newlines
     Identifier(String),    // Variable/function names
     Operator(String),      // Mathematical or logical operators
     Keyword(String),       // Reserved language words
-    Delimiter(String),     // Punctuation like parentheses or semicolons
-    WhiteSpace,    // Spaces, tabs, newlines
+    Delimiter(String),     // Punctuation like parentheses or semicolon
     Comment(String),
     Unknown,
     EOF
@@ -164,6 +199,14 @@ pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
 }
+
+
+// Lexer structure as follows:
+// Read character by character.
+// Create Regex for each token type
+// From regex create a DFA to match input text.
+// In the case where you have similar texts, the text that matches the longest Regex pattern wins.
+// Once finite automata checks, code is run for each specific case.
 
 
 // Create a basic Lexer structure, start at zero for all values.
@@ -300,8 +343,34 @@ impl <'a> Lexer<'a>{
         add_string
     }
 
-    fn get_whitespace(c: &char) -> bool {
-        c.is_whitespace()
+    pub fn is_whitespace(c: char) -> bool {
+        /// Stolen from official rust compiler, since whitespace check will practically be the same.
+        // This is Pattern_White_Space.
+        //
+        // Note that this set is stable (ie, it doesn't change with different
+        // Unicode versions), so it's ok to just hard-code the values.
+
+        matches!(
+        c,
+        // Usual ASCII suspects
+        '\u{0009}'   // \t
+        | '\u{000A}' // \n
+        | '\u{000B}' // vertical tab
+        | '\u{000C}' // form feed
+        | '\u{000D}' // \r
+        | '\u{0020}' // space
+
+        // NEXT LINE from latin1
+        | '\u{0085}'
+
+        // Bidi markers
+        | '\u{200E}' // LEFT-TO-RIGHT MARK
+        | '\u{200F}' // RIGHT-TO-LEFT MARK
+
+        // Dedicated whitespace characters from Unicode
+        | '\u{2028}' // LINE SEPARATOR
+        | '\u{2029}' // PARAGRAPH SEPARATOR
+    )
     }
 
     fn is_delimiter(c: &char) -> bool {
@@ -423,8 +492,8 @@ impl <'a> Lexer<'a>{
     fn is_operator(&mut self) -> bool {
         let operator: String = self.check_value();
         let num_reg = Regex::new(r"[0-9_]+").unwrap();
-        let op_grab = self.build_operator_number_regex(*OPERATORS);
-        let op_reg = Regex::new(&op_grab);
+        // let op_grab = self.build_operator_number_regex(*OPERATORS);
+        // let op_reg = Regex::new(&op_grab);
         if operator == "*" && num_reg.is_match(&*self.next_char().unwrap().to_string()){
             true
         }

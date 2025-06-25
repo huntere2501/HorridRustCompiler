@@ -15,7 +15,7 @@ use crate::syntax_parser::parser::Parser;
 
 
 fn main() {
-    // Just for testing, the Parse will call upon the Lexer in actual runs.
+    // Just for testing, the Parse will call upon the Lexer in actual runs
     let input  = "5*5";
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();
