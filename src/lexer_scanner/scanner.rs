@@ -156,15 +156,51 @@ pub(crate) enum TokenType {
         doc_style: Option<DocStyle>,
         terminated: bool,
     },
-    WhiteSpace,    // Spaces, tabs, newlines
-    Identifier(String),    // Variable/function names
-    Operator(String),      // Mathematical or logical operators
-    Keyword(String),       // Reserved language words
-    Delimiter(String),     // Punctuation like parentheses or semicolon
-    Comment(String),
+    Ident,
+    InvalidIdent,
+    RawIdent,
+    UnknownPrefix,
+    UnknownPrefixLifetime,
+    RawLifetime,
+    GuardedStrPrefix,
+    Literal {
+        kind: LiteralKind,
+        suffix_start: u32,
+    },
+    Lifetime {
+        starts_with_number: bool,
+    },
+    Semi,
+    Comma,
+    Dot,
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
+    OpenBracket,
+    CloseBracket,
+    At,
+    Pound,
+    Tilde,
+    Question,
+    Colon,
+    Dollar,
+    Eq,
+    Bang,
+    Lt,
+    Gt,
+    Minus,
+    And,
+    Or,
+    Plus,
+    Star,
+    Slash,
+    Caret,
+    Percent,
     Unknown,
-    EOF
+    EOF,
 }
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TextSpan {
@@ -231,37 +267,36 @@ impl <'a> Lexer<'a>{
         c.map(|c| {
             let start = self.current_position;
             let mut kind = TokenType::Unknown;
-            if self.is_number_start() {
-                let number: i64 = self.get_number();
-                kind = TokenType::Integer(number);
-            }
-            else if self.is_float_start(){
-                let float: f64 = self.get_float();
-                kind = TokenType::Float(float);
-            }
-            else if self.is_keyword(){
-                let keyword: String = self.get_keyword();
-                kind = TokenType::Keyword(keyword);
-            }
-            else if self.is_operator(){
-                let operator: String = self.get_operator();
-                kind = TokenType::Operator(operator);
-            }
-            else if self.is_identifier(){
-                let identifier: String = self.get_identifier();
-                kind = TokenType::Identifier(identifier);
-            }
-            else if Self::get_whitespace(&c) {
-                self.consume();
-                kind = TokenType::WhiteSpace;
-            }
-            else if Self::is_delimiter(&c) {
-                self.consume();
-                kind = TokenType::Delimiter(String::from(c));
-            }
-            else if Self::is_comment(&c){
-                let comment:String = self.get_comment();
-                kind = TokenType::Comment(String::from(comment));
+            match c{
+                /// Basic reset of values.
+                c => TokenType::Literal,
+                ',' => TokenType::Comma,
+                '.' => TokenType::Dot,
+                '(' => TokenType::OpenParen,
+                ')' => TokenType::CloseParen,
+                '{' => TokenType::OpenBrace,
+                '}' => TokenType::CloseBrace,
+                '[' => TokenType::OpenBracket,
+                ']' => TokenType::CloseBracket,
+                '@' => TokenType::At,
+                '#' => TokenType::Pound,
+                '~' => TokenType::Tilde,
+                '?' => TokenType::Question,
+                ':' => TokenType::Colon,
+                '$' => TokenType::Dollar,
+                '=' => TokenType::Eq,
+                '!' => TokenType::Bang,
+                '<' => TokenType::Lt,
+                '>' => TokenType::Gt,
+                '-' => TokenType::Minus,
+                '&' => TokenType::And,
+                '|' => TokenType::Or,
+                '+' => TokenType::Plus,
+                '*' => TokenType::Star,
+                '/' => TokenType::Slash,
+                '^' => TokenType::Caret,
+                '%' => TokenType::Percent,
+                _ => TokenType::Unknown
             }
 
             let end = self.current_position;
@@ -271,13 +306,19 @@ impl <'a> Lexer<'a>{
         })
     }
 
-    // For checking single character values.
+    /// For checking single character values.
+    /// Using clone copies an iterator which means the value is not consumed until we want to consume it.
+    /// Only current_char gets consumes, second and third_char are used for checks.
     fn current_char(&self) -> Option<char> {
         self.input.chars().nth(self.current_position)
     }
-    fn next_char(&self) -> Option<char> {
-        self.input.chars().nth(self.current_position+1)
+    fn second_char(&self) -> Option<char> {
+        self.input.chars().clone().nth(self.current_position+1)
     }
+    fn third_char(&self) -> Option<char> {
+        self.input.chars().clone().nth(self.current_position+2)
+    }
+
 
     // For grabbing the current character
     fn consume(&mut self) -> Option<char>{
@@ -430,17 +471,6 @@ impl <'a> Lexer<'a>{
         let comp_str: String = self.consume_value();
         let number: i64 = comp_str.parse::<i64>().unwrap();
         number
-    }
-
-    fn is_float_start(&mut self) -> bool {
-        let comp_str: String = self.check_value();
-        comp_str.parse::<f64>().is_ok()
-    }
-
-    fn get_float(&mut self) -> f64 {
-        let comp_str: String = self.consume_value();
-        let float: f64 = comp_str.parse::<f64>().unwrap();
-        float
     }
 
     fn build_keyword_number_regex(&mut self, keywords: phf::Map<&'static str, Keyword>) -> String {
