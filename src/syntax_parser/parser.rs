@@ -36,25 +36,25 @@ impl Parser{
         println!("{:?}",token.kind);
         // Betcha it has to do with the token.clone()
         match token.clone().kind {
-            // ISSUE WITH THIS MATCH STATEMENT!!
-            TokenType::Integer(number) =>{
-                Some(ASTExpression::number(number))
-            }
-            TokenType::Float(float) =>{
-                Some(ASTExpression::float(float))
-            }
-            TokenType::Identifier(identifier) =>{
-                Some(ASTExpression::identifier(String::from(identifier)))
-            }
-            TokenType::Operator(operator) =>{
-                Some(ASTExpression::operator(String::from(operator)))
-            }
-            TokenType::Keyword(keyword) =>{
-                Some(ASTExpression::keyword(String::from(keyword)))
-            }
-            TokenType::WhiteSpace =>{
-                Some(ASTExpression::whitespace())
-            }
+            // // ISSUE WITH THIS MATCH STATEMENT!!
+            // TokenType::Integer(number) =>{
+            //     Some(ASTExpression::number(number))
+            // }
+            // TokenType::Float(float) =>{
+            //     Some(ASTExpression::float(float))
+            // }
+            // TokenType::Identifier(identifier) =>{
+            //     Some(ASTExpression::identifier(String::from(identifier)))
+            // }
+            // TokenType::Operator(operator) =>{
+            //     Some(ASTExpression::operator(String::from(operator)))
+            // }
+            // TokenType::Keyword(keyword) =>{
+            //     Some(ASTExpression::keyword(String::from(keyword)))
+            // }
+            // TokenType::WhiteSpace =>{
+            //     Some(ASTExpression::whitespace())
+            // }
             _ => {
                 None
             }
