@@ -192,6 +192,8 @@ pub(crate) enum TokenType {
     EOF,
 }
 
+pub(crate) const EOF_CHAR: char = '\0';
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TextSpan {
@@ -227,27 +229,18 @@ pub(crate) struct Lexer<'a> {
     current_position: usize,
 }
 
-
-// Lexer structure as follows:
-// Read character by character.
-// Create Regex for each token type
-// From regex create a DFA to match input text.
-// In the case where you have similar texts, the text that matches the longest Regex pattern wins.
-// Once finite automata checks, code is run for each specific case.
-
-
-// Create a basic Lexer structure, start at zero for all values.
+/// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
     pub fn new(input: & 'a str) -> Self {
         Self {input, current_position: 0}
     }
-    // First fix keyword/operator finding
-    // Then handle the operator/ keyword issue.
+    /// Will read through each character in an input string and match the value to a token type.
+    /// Uses .map() to create an iterator and match statement to find correct token type.
     pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
         let Some(c) = self.next_char() else {
-            return Token::new(TokenType::EOF, TextSpan::new(0,0,String::from("0/")));
+            return Token::new(TokenType::EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
         };
         let c  = self.current_char();
         c.map(|c| {
@@ -297,35 +290,42 @@ impl <'a> Lexer<'a>{
     /// For checking single character values.
     /// Using clone copies an iterator which means the value is not consumed until we want to consume it.
     /// Only current_char gets consumes, second and third_char are used for checks.
-    fn current_char(&self) -> Option<char> {
-        self.input.chars().nth(self.current_position)
+    fn current_char(&self) -> char {
+        self.input.nth(self.current_position)
     }
     /// Move to next character and consume the current one.
-    fn next_char(&self) -> Option<char> {
-        self.input.chars().nth(self.current_position+1)
+    fn next_char(&self) -> char {
+        self.input.nth(self.current_position+1)
+    }
+    /// Check current character, but use clone() so item doesn't get consumed.
+    fn check_curr_char(&self) -> char {
+        self.input.clone().nth(self.current_position)
     }
     /// Check next character, but use clone() so item doesn't get consumed.
-    fn first_char(&self) -> Option<char> {
-        self.input.chars().clone().nth(self.current_position+1)
+    fn first_char(&self) -> char {
+        self.input.clone().nth(self.current_position+1)
     }
     /// Check second character, but use clone() so item doesn't get consumed.
-    fn second_char(&self) -> Option<char> {
-        self.input.chars().clone().nth(self.current_position+2)
+    fn second_char(&self) -> char {
+        self.input.clone().nth(self.current_position+2)
     }
     /// Check third character, but use clone() so item doesn't get consumed.
-    fn third_char(&self) -> Option<char> {
-        self.input.chars().clone().nth(self.current_position+3)
+    fn third_char(&self) -> char {
+        self.input.clone().nth(self.current_position+3)
     }
 
 
-    // For grabbing the current character
-    fn consume(&mut self) -> Option<char>{
-        if self.current_position > self.input.len(){
-            return None
+    /// Reads each character until we hit a character we don't want to consume.
+    fn consume_until(&mut self, c: char) {
+        while c != self.first_char() && c != EOF_CHAR {
+            self.next_char();
         }
-        let c = self.current_char();
-        self.current_position += 1;
-        c
+    }
+
+    fn consume_while(&mut self, c:char) {
+        while c != EOF_CHAR {
+            self.next_char();
+        }
     }
 
     pub fn is_whitespace(c: char) -> bool {
@@ -358,48 +358,69 @@ impl <'a> Lexer<'a>{
         )
     }
 
-    fn whitespace(&mut self) -> TokenType{
-        self.consume_while(self.is_whitespace());
-        TokenType::Whitespace
-    }
-
     fn line_comment(&mut self) -> TokenType {
-        self.consume_while(!"\n");
-        TokenType::LineComment
+        if self.check_curr_char() == '/' && self.first_char() == '/' {
+            self.next_char();
+        }
+        let check_doc = match self.first_char() {
+            '!' => Some(DocStyle::Inner),
+            '/' if self.second_char() != '/' => Some(DocStyle::Outer),
+           _ => None,
+        };
+        self.consume_until('\n');
+        TokenType::LineComment { doc_style: check_doc,}
     }
 
     fn block_comment(&mut self) -> TokenType{
-        self.consume_while(!"\n");
-        TokenType::BlockComment
+        if self.check_curr_char() == '/' && self.first_char() == '*' {
+            self.next_char();
+        }
+        let check_doc = match self.first_char() {
+            '!' => Some(DocStyle::Inner),
+            '*' if self.second_char() != '*' => Some(DocStyle::Outer),
+            _ => None,
+        };
+        self.consume_until('\n');
+        TokenType::BlockComment { doc_style: check_doc, terminated: false }
     }
 
     fn frontmatter(&mut self) -> TokenType{
         TokenType::Frontmatter
     }
+
     fn identifier(&mut self) -> TokenType{
         TokenType::Identifier
     }
+
+
     fn invalid_identifier(&mut self) -> TokenType{
         TokenType::InvalidIdentifier
     }
+
     fn raw_identifier(&mut self) -> TokenType{
         TokenType::RawIdentifier
     }
+
     fn unkwn_prefix(&mut self) -> TokenType{
         TokenType::UnknownPrefix
     }
+
     fn unkwn_prefix_lifetime(&mut self) -> TokenType{
         TokenType::UnknownPrefixLifetime
     }
+
     fn raw_lifetime(&mut self) -> TokenType{
         TokenType::RawLifetime
     }
+
     fn grd_str_prefix(&mut self) -> TokenType{
         TokenType::GuardedStrPrefix
     }
+
     fn literal(&mut self) -> TokenType{
         TokenType::Literal
     }
+
     fn lifetime(&mut self) -> TokenType{
         TokenType::Lifetime
     }
