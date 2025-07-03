@@ -3,6 +3,7 @@ The Lexical Analyzer breaks up code into tokens, and runs operations based on th
 It will have to break up the values by type, operator, delimiter, numerics, strings, etc.
 It will also need to work with the error_handler to call errors when they are found.
 */
+use std::ffi::c_char;
 use phf::phf_map;
 use regex::Regex;
 
@@ -84,37 +85,6 @@ static KEYWORDS: phf::Map<&'static str, Keyword> = phf_map! {
     "dyn" => Keyword::Dyn,
 };
 
-// NEED TO UPDATE LIST TO INCLUDE ALL OPERATORS
-// Gotta figure out how operators are seperated.
-#[derive(Clone)]
-enum Operators{
-    MODULO,
-    MODULO_EQUALS,
-    BITWISE,
-    BITWISE_EQUALS,
-    MULTIPLY,
-    MULT_EQUALS,
-    ADD,
-    ADD_EQUALS,
-    SUB,
-    SUB_EQUALS,
-    DIVIDE,
-    DIVIDE_EQUALS
-
-}
-static OPERATORS: phf::Map<&'static str, Operators> = phf_map! {
-    "%" => Operators::MODULO,
-    "%=" => Operators::MODULO_EQUALS,
-    "&" => Operators::BITWISE,
-    "&=" => Operators::BITWISE_EQUALS,
-    "*" => Operators::MULTIPLY,
-    "*=" => Operators::MULT_EQUALS,
-    "+" => Operators::ADD,
-    "+=" => Operators::ADD_EQUALS,
-    "/" => Operators::DIVIDE,
-    "/=" => Operators::DIVIDE_EQUALS,
-};
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
     /// Used to handle all types of comment types that Rust has.
@@ -146,9 +116,29 @@ pub enum LiteralKind {
     RawCStr { n_hashes: Option<u8> },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GuardedStr {
+    pub n_hashes: u32,
+    pub terminated: bool,
+    pub token_len: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RawStrError {
+    /// Non `#` characters exist between `r` and `"`, e.g. `r##~"abcde"##`
+    InvalidStarter { bad_char: char },
+    /// The string was not terminated, e.g. `r###"abcde"##`.
+    /// `possible_terminator_offset` is the number of characters after `r` or
+    /// `br` where they may have intended to terminate it.
+    NoTerminator { expected: u32, found: u32, possible_terminator_offset: Option<u32> },
+    /// More than 255 `#`s exist.
+    TooManyDelimiters { found: u32 },
+}
+
 // Enum of different types a token might be, covers most options for now.
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum TokenType {
+    Whitespace,
     LineComment {
         doc_style: Option<DocStyle>,
     },
@@ -156,9 +146,10 @@ pub(crate) enum TokenType {
         doc_style: Option<DocStyle>,
         terminated: bool,
     },
-    Ident,
-    InvalidIdent,
-    RawIdent,
+    Frontmatter,
+    Identifier,
+    InvalidIdentifier,
+    RawIdentifier,
     UnknownPrefix,
     UnknownPrefixLifetime,
     RawLifetime,
@@ -252,24 +243,21 @@ impl <'a> Lexer<'a>{
     }
     // First fix keyword/operator finding
     // Then handle the operator/ keyword issue.
-    pub fn next_token(&mut self) -> Option<Token>{
+    pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
-        if self.current_position == self.input.len() {
-            let eof_char: char = '\0';
-            self.current_position += 1;
-            return Some(Token::new(
-                TokenType::EOF,
-                TextSpan::new(0,0,eof_char.to_string())
-            ));
-        }
+        let Some(c) = self.next_char() else {
+            return Token::new(TokenType::EOF, TextSpan::new(0,0,String::from("0/")));
+        };
         let c  = self.current_char();
         c.map(|c| {
             let start = self.current_position;
             let mut kind = TokenType::Unknown;
             match c{
                 /// Basic reset of values.
-                c => TokenType::Literal,
+                'a' => TokenType::Literal,
+                c if c.is_whitespace() => self.whitespace(),
+                c if self.is_comment(&c) => self.comment(),
                 ',' => TokenType::Comma,
                 '.' => TokenType::Dot,
                 '(' => TokenType::OpenParen,
@@ -312,11 +300,21 @@ impl <'a> Lexer<'a>{
     fn current_char(&self) -> Option<char> {
         self.input.chars().nth(self.current_position)
     }
-    fn second_char(&self) -> Option<char> {
+    /// Move to next character and consume the current one.
+    fn next_char(&self) -> Option<char> {
+        self.input.chars().nth(self.current_position+1)
+    }
+    /// Check next character, but use clone() so item doesn't get consumed.
+    fn first_char(&self) -> Option<char> {
         self.input.chars().clone().nth(self.current_position+1)
     }
-    fn third_char(&self) -> Option<char> {
+    /// Check second character, but use clone() so item doesn't get consumed.
+    fn second_char(&self) -> Option<char> {
         self.input.chars().clone().nth(self.current_position+2)
+    }
+    /// Check third character, but use clone() so item doesn't get consumed.
+    fn third_char(&self) -> Option<char> {
+        self.input.chars().clone().nth(self.current_position+3)
     }
 
 
@@ -329,60 +327,6 @@ impl <'a> Lexer<'a>{
         self.current_position += 1;
         c
     }
-    // Ex: *var*5
-    // Read until we hit a new type of token
-    // Need to fix the way I am checking values for next time.
-    fn check_value(&mut self) -> String {
-        let mut add_string = String::new();
-        let mut count = 0;
-        while let Some(mut value) = self.current_char(){
-            let next_val  = self.next_char();
-            if next_val == Option::from('*') || next_val == Option::from('&') {
-                value = self.consume().unwrap();
-                add_string.push(value);
-                count += 1;
-                break
-            }
-            if value == '*' || value == '&'{
-                value = self.consume().unwrap();
-                add_string.push(value);
-                count += 1;
-                break
-            }
-            else if !value.is_whitespace(){
-                // Match statement to handle regex?
-                value = self.consume().unwrap();
-                add_string.push(value);
-                count += 1;
-            }
-        }
-        self.current_position -= count;
-        add_string
-    }
-
-    // For grabbing an entire value up to whitespace.
-    // Check value should give a value to consume value.
-    fn consume_value(&mut self) -> String {
-        let mut add_string = String::new();
-        while let Some(mut value) = self.current_char(){
-            let next_val  = self.next_char();
-            if next_val == Option::from('*') || next_val == Option::from('&') {
-                value = self.consume().unwrap();
-                add_string.push(value);
-                break
-            }
-            if value == '*' || value == '&'{
-                value = self.consume().unwrap();
-                add_string.push(value);
-                break
-            }
-            else if !value.is_whitespace(){
-                value = self.consume().unwrap();
-                add_string.push(value);
-            }
-        }
-        add_string
-    }
 
     pub fn is_whitespace(c: char) -> bool {
         /// Stolen from official rust compiler, since whitespace check will practically be the same.
@@ -392,150 +336,73 @@ impl <'a> Lexer<'a>{
         // Unicode versions), so it's ok to just hard-code the values.
 
         matches!(
-        c,
-        // Usual ASCII suspects
-        '\u{0009}'   // \t
-        | '\u{000A}' // \n
-        | '\u{000B}' // vertical tab
-        | '\u{000C}' // form feed
-        | '\u{000D}' // \r
-        | '\u{0020}' // space
+            c,
+            // Usual ASCII suspects
+            '\u{0009}'   // \t
+            | '\u{000A}' // \n
+            | '\u{000B}' // vertical tab
+            | '\u{000C}' // form feed
+            | '\u{000D}' // \r
+            | '\u{0020}' // space
 
-        // NEXT LINE from latin1
-        | '\u{0085}'
+            // NEXT LINE from latin1
+            | '\u{0085}'
 
-        // Bidi markers
-        | '\u{200E}' // LEFT-TO-RIGHT MARK
-        | '\u{200F}' // RIGHT-TO-LEFT MARK
+            // Bidi markers
+            | '\u{200E}' // LEFT-TO-RIGHT MARK
+            | '\u{200F}' // RIGHT-TO-LEFT MARK
 
-        // Dedicated whitespace characters from Unicode
-        | '\u{2028}' // LINE SEPARATOR
-        | '\u{2029}' // PARAGRAPH SEPARATOR
-    )
+            // Dedicated whitespace characters from Unicode
+            | '\u{2028}' // LINE SEPARATOR
+            | '\u{2029}' // PARAGRAPH SEPARATOR
+        )
     }
 
-    fn is_delimiter(c: &char) -> bool {
-        if *c == ';'{
-            true
-        }
-        else{
-            false
-        }
+    fn whitespace(&mut self) -> TokenType{
+        self.consume_while(self.is_whitespace());
+        TokenType::Whitespace
     }
 
-    fn is_comment(c: &char) -> bool{
-        if *c == '/'{
-            true
-        }
-        else{
-            false
-        }
+    fn line_comment(&mut self) -> TokenType {
+        self.consume_while(!"\n");
+        TokenType::LineComment
     }
 
-    // NOT CORRECT, going to have to do more reading.
-    fn get_comment(&mut self) -> String {
-        let line = self.check_value();
-        if line  == "//" || "//!".parse().unwrap() || "///".parse().unwrap() || "/*".parse().unwrap() {
-            line
-        }
-        else{
-            line
-        }
+    fn block_comment(&mut self) -> TokenType{
+        self.consume_while(!"\n");
+        TokenType::BlockComment
     }
 
-    fn is_identifier(&mut self) -> bool{
-        let identifier = self.check_value();
-        let word_reg = Regex::new(r"[a-zA-Z_]+").unwrap();
-        if (identifier == "*" || identifier == "&") && word_reg.is_match(&*self.next_char().unwrap().to_string()){
-            true
-        }
-        else if KEYWORDS.get(&*identifier).cloned().is_none() && OPERATORS.get(&*identifier).cloned().is_none() && !identifier.is_empty() {
-           true
-        }
-        else{
-            false
-        }
+    fn frontmatter(&mut self) -> TokenType{
+        TokenType::Frontmatter
+    }
+    fn identifier(&mut self) -> TokenType{
+        TokenType::Identifier
+    }
+    fn invalid_identifier(&mut self) -> TokenType{
+        TokenType::InvalidIdentifier
+    }
+    fn raw_identifier(&mut self) -> TokenType{
+        TokenType::RawIdentifier
+    }
+    fn unkwn_prefix(&mut self) -> TokenType{
+        TokenType::UnknownPrefix
+    }
+    fn unkwn_prefix_lifetime(&mut self) -> TokenType{
+        TokenType::UnknownPrefixLifetime
+    }
+    fn raw_lifetime(&mut self) -> TokenType{
+        TokenType::RawLifetime
+    }
+    fn grd_str_prefix(&mut self) -> TokenType{
+        TokenType::GuardedStrPrefix
+    }
+    fn literal(&mut self) -> TokenType{
+        TokenType::Literal
+    }
+    fn lifetime(&mut self) -> TokenType{
+        TokenType::Lifetime
     }
 
-    fn get_identifier(&mut self) -> String{
-        let identifier = self.consume_value();
-        identifier
-    }
 
-    fn is_number_start(&mut self) -> bool {
-        let comp_str: String = self.check_value();
-        comp_str.parse::<i64>().is_ok()
-    }
-
-    fn get_number(&mut self) -> i64 {
-        let comp_str: String = self.consume_value();
-        let number: i64 = comp_str.parse::<i64>().unwrap();
-        number
-    }
-
-    fn build_keyword_number_regex(&mut self, keywords: phf::Map<&'static str, Keyword>) -> String {
-        let mut keys: Vec<&str> = keywords.keys().copied().collect();
-
-        // Sort by length (longest first) to handle overlapping operators correctly
-        // This ensures "==" is matched before "=" if both exist
-        keys.sort_by(|a, b| b.len().cmp(&a.len()));
-
-        // Escape special regex characters
-        let escaped_keys: Vec<String> = keys.iter()
-            .map(|&key| regex::escape(key))
-            .collect();
-
-        // Join with | (alternation) and add number pattern
-        format!("({})", escaped_keys.join("|"))
-    }
-
-    fn is_keyword(&mut self) -> bool {
-        let mut comp_str: String = self.check_value();
-        if KEYWORDS.get(&*comp_str).cloned().is_some() {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn get_keyword(&mut self) -> String{
-        let comp_str: String = self.consume_value();
-        comp_str
-    }
-
-    fn build_operator_number_regex(&mut self, operators: phf::Map<&'static str, Operators>) -> String {
-        let mut keys: Vec<&str> = operators.keys().copied().collect();
-
-        // Sort by length (longest first) to handle overlapping operators correctly
-        // This ensures "==" is matched before "=" if both exist
-        keys.sort_by(|a, b| b.len().cmp(&a.len()));
-
-        // Escape special regex characters
-        let escaped_keys: Vec<String> = keys.iter()
-            .map(|&key| regex::escape(key))
-            .collect();
-
-        // Join with | (alternation) and add number pattern
-        format!("({})[0-9]+", escaped_keys.join("|"))
-    }
-
-    fn is_operator(&mut self) -> bool {
-        let operator: String = self.check_value();
-        let num_reg = Regex::new(r"[0-9_]+").unwrap();
-        // let op_grab = self.build_operator_number_regex(*OPERATORS);
-        // let op_reg = Regex::new(&op_grab);
-        if operator == "*" && num_reg.is_match(&*self.next_char().unwrap().to_string()){
-            true
-        }
-        else if OPERATORS.get(&*operator).cloned().is_some() {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn get_operator(&mut self) -> String{
-        let operator: String = self.consume_value();
-        operator
-    }
 }
