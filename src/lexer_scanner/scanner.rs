@@ -389,6 +389,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn identifier(&mut self) -> TokenType{
+        // How to check this by using the phf map?????/
         TokenType::Identifier
     }
 
