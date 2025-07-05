@@ -4,8 +4,11 @@ It will have to break up the values by type, operator, delimiter, numerics, stri
 It will also need to work with the error_handler to call errors when they are found.
 */
 use std::ffi::c_char;
+use std::ops::Add;
 use phf::phf_map;
-use regex::Regex;
+use unicode_properties::UnicodeEmoji;
+pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
+
 
 #[derive(Clone)]
 pub enum Keyword {
@@ -135,7 +138,8 @@ pub enum RawStrError {
     TooManyDelimiters { found: u32 },
 }
 
-// Enum of different types a token might be, covers most options for now.
+/// List of tokentypes and properties.
+/// Raw simply means any value that starts with r#
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum TokenType {
     Whitespace,
@@ -147,6 +151,7 @@ pub(crate) enum TokenType {
         terminated: bool,
     },
     Frontmatter,
+    Keyword,
     Identifier,
     InvalidIdentifier,
     RawIdentifier,
@@ -192,7 +197,9 @@ pub(crate) enum TokenType {
     EOF,
 }
 
+/// Useful constant values to keep for specific checks.
 pub(crate) const EOF_CHAR: char = '\0';
+pub const ZERO_WIDTH_JOINER: char = '\u{200d}';
 
 
 #[derive(Debug, PartialEq, Clone)]
@@ -321,9 +328,10 @@ impl <'a> Lexer<'a>{
             self.next_char();
         }
     }
-
-    fn consume_while(&mut self, c:char) {
-        while c != EOF_CHAR {
+    /// Consumes while character value is equal to what is provided.
+    /// Returns a bool from a function with a wildcard input(_).
+    fn consume_while(&mut self, c: fn(_) -> bool)  {
+        while self.current_char() == c {
             self.next_char();
         }
     }
@@ -372,6 +380,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn block_comment(&mut self) -> TokenType{
+        /// TODO: Block Comment needs more verbose checking.
         if self.check_curr_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
@@ -388,13 +397,38 @@ impl <'a> Lexer<'a>{
         TokenType::Frontmatter
     }
 
+    fn keyword(&mut self) -> TokenType{
+        /// TODO: Keyword needs to be checked and stored in seperate function before deciding tokentype.
+        let mut check: String = "".to_owned();
+        while !Self::is_whitespace(self.check_curr_char()){
+            check.push_str(&self.check_curr_char().to_string());
+            self.first_char();
+        }
+        if KEYWORDS.get(&*check){
+            TokenType::Keyword
+        }
+        else{
+            TokenType::Unknown
+        }
+    }
+
     fn identifier(&mut self) -> TokenType{
-        // How to check this by using the phf map?????/
+        /// TODO: Identifier needs more verbose checking. More time needs to spent understanding how to check for it.
+        // This is incorrect right now and doesn't match the proper checking.
+        self.consume_while(|c| {
+            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
+        });
         TokenType::Identifier
     }
 
+    /// Invalid identifiers include items that are not traditional rust identifiers
+    /// Ex: let 8run =...... digits shouldnt start variable names.
+    fn invalid_identifier(&mut self) -> TokenType {
 
-    fn invalid_identifier(&mut self) -> TokenType{
+        // This is just the start for the valid identifier.
+        self.consume_while(|c| {
+            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii()
+        });
         TokenType::InvalidIdentifier
     }
 

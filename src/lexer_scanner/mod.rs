@@ -1,3 +1,3 @@
 pub mod scanner;
-
-extern crate regex;
+extern crate unicode_xid;
+extern crate unicode_properties;
