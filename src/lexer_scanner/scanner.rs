@@ -6,7 +6,8 @@ It will also need to work with the error_handler to call errors when they are fo
 use std::ffi::c_char;
 use std::ops::Add;
 use phf::phf_map;
-use unicode_properties::UnicodeEmoji;
+use regex::Regex;
+
 pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
 
 
@@ -88,6 +89,9 @@ static KEYWORDS: phf::Map<&'static str, Keyword> = phf_map! {
     "dyn" => Keyword::Dyn,
 };
 
+/// Set regex for keywords at compile time.
+pub static KEYWORD_PATTERN: &str = r"\b(loop|continue|break|fn|extern|as|const|crate|else|enum|false|for|if|impl|in|let|match|mod|move|mut|pub|ref|return|static|struct|super|trait|true|type|unsafe|use|where|while|async|await|dyn)\b";
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
     /// Used to handle all types of comment types that Rust has.
@@ -128,13 +132,8 @@ pub struct GuardedStr {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawStrError {
-    /// Non `#` characters exist between `r` and `"`, e.g. `r##~"abcde"##`
     InvalidStarter { bad_char: char },
-    /// The string was not terminated, e.g. `r###"abcde"##`.
-    /// `possible_terminator_offset` is the number of characters after `r` or
-    /// `br` where they may have intended to terminate it.
     NoTerminator { expected: u32, found: u32, possible_terminator_offset: Option<u32> },
-    /// More than 255 `#`s exist.
     TooManyDelimiters { found: u32 },
 }
 
@@ -150,7 +149,10 @@ pub(crate) enum TokenType {
         doc_style: Option<DocStyle>,
         terminated: bool,
     },
-    Frontmatter,
+    Frontmatter{
+        has_invalid_preceding_whitespace: bool,
+        invalid_infostring: bool,
+    },
     Keyword,
     Identifier,
     InvalidIdentifier,
@@ -254,10 +256,12 @@ impl <'a> Lexer<'a>{
             let start = self.current_position;
             let mut kind = TokenType::Unknown;
             match c{
-                /// Basic reset of values.
+                /// Basic check of all values char by char.
                 'a' => TokenType::Literal,
                 c if c.is_whitespace() => self.whitespace(),
                 c if self.is_comment(&c) => self.comment(),
+                c if self.check_keyword(c) => self.keyword(),
+                c if self.check_identifier(c) => self.identifier(),
                 ',' => TokenType::Comma,
                 '.' => TokenType::Dot,
                 '(' => TokenType::OpenParen,
@@ -287,6 +291,7 @@ impl <'a> Lexer<'a>{
                 _ => TokenType::Unknown
             }
 
+            /// TODO After receiving TokenType need to input string to get literal and span with token.
             let end = self.current_position;
             let literal = self.input[start..end].to_string();
             let span = TextSpan::new(start, end, literal);
@@ -303,6 +308,13 @@ impl <'a> Lexer<'a>{
     /// Move to next character and consume the current one.
     fn next_char(&self) -> char {
         self.input.nth(self.current_position+1)
+    }
+    fn next_while(&self, count: usize) -> char {
+        let mut i = 0;
+        while i < count{
+            self.input.nth(self.current_position+1);
+            i += 1;
+        }
     }
     /// Check current character, but use clone() so item doesn't get consumed.
     fn check_curr_char(&self) -> char {
@@ -392,23 +404,102 @@ impl <'a> Lexer<'a>{
         self.consume_until('\n');
         TokenType::BlockComment { doc_style: check_doc, terminated: false }
     }
-
+    /// Used to check and remove metadata at the beginning of certain rust files.
     fn frontmatter(&mut self) -> TokenType{
-        TokenType::Frontmatter
+        debug_assert_eq!('-', self.prev());
+        let postition = self.input.len();
+        self.consume_while(|c| c == '-');
+        let opening = self.input.len() - postition + 1;
+        debug_assert!(opening >= 3);
+        self.consume_while(|c| c != '\n' && self.is_whitespace(c));
+
+        if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
+            self.next_char();
+            self.consume_while(|c| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
+        }
+        self.consume_while(|c| c != '\n' && self.is_whitespace(c));
+        let invalid_infostr = self.first_char() != '\n';
+        let mut s = self.input.as_str();
+        let mut found = false;
+        let mut size = 0;
+        while let Some(closing) = s.find(&"-".repeat(opening as usize)){
+            let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
+            if s[prev_chars_start..closing].chars().all(self.is_whitespace()){
+                self.next_while(size + closing);
+                self.consume_until(b'\n');
+                found = true;
+                break;
+            }
+            else{
+                s = &s[closing + opening as usize..];
+                size += closing + opening as usize;
+            }
+        }
+        if !found{
+
+            let mut rest = self.input.as_str();
+
+            let mut potential_closing = rest
+                .find("\n---")
+                .map(|x| x + 1)
+                .or_else(|| rest.find("\nuse "))
+                .or_else(|| rest.find("\n//!"))
+                .or_else(|| rest.find("\n#!["));
+
+            if potential_closing.is_none() {
+                // a less fortunate recovery if all else fails which finds any dashes preceded by whitespace
+                // on a standalone line. Might be wrong.
+                while let Some(closing) = rest.find("---") {
+                    let preceding_chars_start = rest[..closing].rfind("\n").map_or(0, |i| i + 1);
+                    if rest[preceding_chars_start..closing].chars().all(self.is_whitespace()) {
+                        // candidate found
+                        potential_closing = Some(closing);
+                        break;
+                    } else {
+                        rest = &rest[closing + 3..];
+                    }
+                }
+            }
+
+            if let Some(potential_closing) = potential_closing {
+                // bump to the potential closing, and eat everything on that line.
+                self.bump_bytes(potential_closing);
+                self.eat_until(b'\n');
+            } else {
+                // eat everything. this will get reported as an unclosed frontmatter.
+                self.eat_while(|_| true);
+            }
+        }
+
+        TokenType::Frontmatter{ has_invalid_preceding_whitespace, invalid_infostring }
+    }
+
+    fn check_keyword(&mut self, c:char) -> bool{
+        /// Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
+        let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
+        let mut test_str:String = String::new();
+        while !self.is_whitespace(){
+            test_str.push_str(self.first_char());
+        }
+        if key_reg.is_match(test_str){
+            true
+        }
+        else { false }
     }
 
     fn keyword(&mut self) -> TokenType{
-        /// TODO: Keyword needs to be checked and stored in seperate function before deciding tokentype.
-        let mut check: String = "".to_owned();
-        while !Self::is_whitespace(self.check_curr_char()){
-            check.push_str(&self.check_curr_char().to_string());
-            self.first_char();
+        while !self.is_whitespace(self.curr_char()){
+            self.next_char();
         }
-        if KEYWORDS.get(&*check){
-            TokenType::Keyword
+        TokenType::Keyword
+    }
+
+    fn check_identifier(&mut self, c: char) -> bool{
+        if let Some(c) = unicode_xid::UnicodeXID::is_xid_start(c){
+            unicode_xid::UnicodeXID::is_xid_continue(c.next())
         }
         else{
-            TokenType::Unknown
+            false
         }
     }
 
@@ -424,7 +515,6 @@ impl <'a> Lexer<'a>{
     /// Invalid identifiers include items that are not traditional rust identifiers
     /// Ex: let 8run =...... digits shouldnt start variable names.
     fn invalid_identifier(&mut self) -> TokenType {
-
         // This is just the start for the valid identifier.
         self.consume_while(|c| {
             unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii()
@@ -432,8 +522,13 @@ impl <'a> Lexer<'a>{
         TokenType::InvalidIdentifier
     }
 
+    /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        TokenType::RawIdentifier
+        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second()));
+        let c: char = self.next_char();
+        if self.check_identifier(c){
+            TokenType::RawIdentifier
+        }
     }
 
     fn unkwn_prefix(&mut self) -> TokenType{
@@ -445,11 +540,16 @@ impl <'a> Lexer<'a>{
     }
 
     fn raw_lifetime(&mut self) -> TokenType{
+        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second()));
         TokenType::RawLifetime
     }
 
     fn grd_str_prefix(&mut self) -> TokenType{
         TokenType::GuardedStrPrefix
+    }
+
+    fn check_literal(&mut self, c: char) -> bool{
+        return true
     }
 
     fn literal(&mut self) -> TokenType{
