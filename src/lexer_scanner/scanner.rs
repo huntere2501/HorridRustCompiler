@@ -232,7 +232,7 @@ impl Token {
         Self{kind, span}
     }
 }
-// The Lexer structure will be used identify the main parts of a value, will stop based on delimiter.
+/// The Lexer structure will be used identify the main parts of a value, will stop based on delimiter.
 pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
@@ -254,7 +254,6 @@ impl <'a> Lexer<'a>{
         let c  = self.current_char();
         c.map(|c| {
             let start = self.current_position;
-            let mut kind = TokenType::Unknown;
             match c{
                 /// Basic check of all values char by char.
                 'a' => TokenType::Literal,
@@ -262,6 +261,8 @@ impl <'a> Lexer<'a>{
                 c if self.is_comment(&c) => self.comment(),
                 c if self.check_keyword(c) => self.keyword(),
                 c if self.check_identifier(c) => self.identifier(),
+                'b' => self.byte_string_check(),
+                'c' => self.byte_string_check(),
                 ',' => TokenType::Comma,
                 '.' => TokenType::Dot,
                 '(' => TokenType::OpenParen,
@@ -295,7 +296,7 @@ impl <'a> Lexer<'a>{
             let end = self.current_position;
             let literal = self.input[start..end].to_string();
             let span = TextSpan::new(start, end, literal);
-            Token::new(kind, span)
+            Token::new(c, span)
         })
     }
 
@@ -379,6 +380,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn line_comment(&mut self) -> TokenType {
+        debug_assert!();
         if self.check_curr_char() == '/' && self.first_char() == '/' {
             self.next_char();
         }
@@ -392,7 +394,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn block_comment(&mut self) -> TokenType{
-        /// TODO: Block Comment needs more verbose checking.
+        debug_assert!();
         if self.check_curr_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
@@ -401,16 +403,35 @@ impl <'a> Lexer<'a>{
             '*' if self.second_char() != '*' => Some(DocStyle::Outer),
             _ => None,
         };
+        /// Read until count is zero == block comment is finished.
+        let mut count = 1usize;
+        while let Some(c) = self.next_char(){
+            match c {
+                '/' if self.first_char() == '*' => {
+                    self.next_char();
+                    count -= 1;
+                    if count == 0{
+                        break;
+                    }
+                }
+                _ => (),
+            }
+        }
+
         self.consume_until('\n');
         TokenType::BlockComment { doc_style: check_doc, terminated: false }
     }
     /// Used to check and remove metadata at the beginning of certain rust files.
+    /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
     fn frontmatter(&mut self) -> TokenType{
         debug_assert_eq!('-', self.prev());
-        let postition = self.input.len();
+        /// Track size of starting delims, used later to match the ending delims since the count should be the same. 
+        let position = self.input.len();
         self.consume_while(|c| c == '-');
-        let opening = self.input.len() - postition + 1;
+        let opening = self.input.len() - position + 1;
         debug_assert!(opening >= 3);
+
+        /// Read until we hit a '-' then check if we have found the final delimiter.
         self.consume_while(|c| c != '\n' && self.is_whitespace(c));
 
         if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
@@ -418,11 +439,13 @@ impl <'a> Lexer<'a>{
             self.consume_while(|c| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
         }
         self.consume_while(|c| c != '\n' && self.is_whitespace(c));
-        let invalid_infostr = self.first_char() != '\n';
+        self.first_char() != '\n';
         let mut s = self.input.as_str();
         let mut found = false;
         let mut size = 0;
-        while let Some(closing) = s.find(&"-".repeat(opening as usize)){
+
+        /// Find the closing delimiter
+        while let Some(closing) = s.find(&"-".repeat(opening)){
             let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
             if s[prev_chars_start..closing].chars().all(self.is_whitespace()){
                 self.next_while(size + closing);
@@ -431,8 +454,8 @@ impl <'a> Lexer<'a>{
                 break;
             }
             else{
-                s = &s[closing + opening as usize..];
-                size += closing + opening as usize;
+                s = &s[closing + opening..];
+                size += closing + opening;
             }
         }
         if !found{
@@ -442,17 +465,14 @@ impl <'a> Lexer<'a>{
             let mut potential_closing = rest
                 .find("\n---")
                 .map(|x| x + 1)
-                .or_else(|| rest.find("\nuse "))
+                .or_else(|| rest.find("\nuse"))
                 .or_else(|| rest.find("\n//!"))
                 .or_else(|| rest.find("\n#!["));
 
             if potential_closing.is_none() {
-                // a less fortunate recovery if all else fails which finds any dashes preceded by whitespace
-                // on a standalone line. Might be wrong.
                 while let Some(closing) = rest.find("---") {
                     let preceding_chars_start = rest[..closing].rfind("\n").map_or(0, |i| i + 1);
                     if rest[preceding_chars_start..closing].chars().all(self.is_whitespace()) {
-                        // candidate found
                         potential_closing = Some(closing);
                         break;
                     } else {
@@ -462,12 +482,12 @@ impl <'a> Lexer<'a>{
             }
 
             if let Some(potential_closing) = potential_closing {
-                // bump to the potential closing, and eat everything on that line.
+                /// TODO Will need to update the bump_bytes func. I have no equal function.
                 self.bump_bytes(potential_closing);
-                self.eat_until(b'\n');
+                self.consume_until(b'\n');
             } else {
-                // eat everything. this will get reported as an unclosed frontmatter.
-                self.eat_while(|_| true);
+                /// Consume everything else since it won't be frontmatter.
+                self.consume_while(|_| true);
             }
         }
 
@@ -476,6 +496,7 @@ impl <'a> Lexer<'a>{
 
     fn check_keyword(&mut self, c:char) -> bool{
         /// Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
+        debug_assert!();
         let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
         let mut test_str:String = String::new();
         while !self.is_whitespace(){
@@ -488,76 +509,94 @@ impl <'a> Lexer<'a>{
     }
 
     fn keyword(&mut self) -> TokenType{
+        debug_assert!();
         while !self.is_whitespace(self.curr_char()){
             self.next_char();
         }
         TokenType::Keyword
     }
 
-    fn check_identifier(&mut self, c: char) -> bool{
-        if let Some(c) = unicode_xid::UnicodeXID::is_xid_start(c){
-            unicode_xid::UnicodeXID::is_xid_continue(c.next())
+    /// Will be used in all identifier calls.
+    /// Checks the first value and subsequent values for if they match the identifier.
+    fn consume_full_identifier(&mut self){
+        if !unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
+            return
         }
         else{
-            false
+            self.consume_while(unicode_xid::UnicodeXID::is_xid_start);
         }
     }
 
     fn identifier(&mut self) -> TokenType{
-        /// TODO: Identifier needs more verbose checking. More time needs to spent understanding how to check for it.
-        // This is incorrect right now and doesn't match the proper checking.
-        self.consume_while(|c| {
-            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
-        });
+        debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
+        self.consume_full_identifier();
         TokenType::Identifier
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
-    /// Ex: let 8run =...... digits shouldnt start variable names.
+    /// Ex: let 8run =...... digits shouldn't start variable names.
     fn invalid_identifier(&mut self) -> TokenType {
-        // This is just the start for the valid identifier.
+        debug_assert!();
         self.consume_while(|c| {
-            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii()
+            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
         });
         TokenType::InvalidIdentifier
     }
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second()));
-        let c: char = self.next_char();
-        if self.check_identifier(c){
-            TokenType::RawIdentifier
-        }
+        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
+        self.next_char();
+        self.consume_full_identifier();
+        TokenType::RawIdentifier
     }
 
     fn unkwn_prefix(&mut self) -> TokenType{
+        debug_assert!();
+
         TokenType::UnknownPrefix
     }
 
     fn unkwn_prefix_lifetime(&mut self) -> TokenType{
+        debug_assert!();
         TokenType::UnknownPrefixLifetime
     }
 
-    fn raw_lifetime(&mut self) -> TokenType{
-        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second()));
-        TokenType::RawLifetime
-    }
-
     fn grd_str_prefix(&mut self) -> TokenType{
+        debug_assert!();
+
         TokenType::GuardedStrPrefix
     }
 
     fn check_literal(&mut self, c: char) -> bool{
+        debug_assert!();
         return true
     }
 
     fn literal(&mut self) -> TokenType{
+        debug_assert!();
         TokenType::Literal
     }
 
+    fn raw_lifetime(&mut self) -> TokenType{
+        debug_assert!(self.prev() == 'r' && self.first() == '#');
+        TokenType::RawLifetime
+    }
+
     fn lifetime(&mut self) -> TokenType{
+        debug_assert!();
         TokenType::Lifetime
+    }
+
+    /// Check the byte or c string then, call identifier checks for token types.
+    fn byte_string_check(&mut self) -> TokenType{
+        debug_assert!();
+        if 1{
+            TokenType::Identifier
+        }
+        else{
+            TokenType::InvalidIdentifier
+        }
     }
 
 
