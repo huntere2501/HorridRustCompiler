@@ -652,12 +652,13 @@ impl <'a> Lexer<'a>{
     }
 
     /// Check if a string matches the String or &str type.
+    /// Used for other tokentype checks (literals, keywords, etc.)
     fn double_quote_string(&mut self) -> bool{
         while let Some(c) = self.next_char(){
             match c{
                 '"' => {return true},
-                /// Handle string escape sequences, read until we hit correct escape character.
-                /// Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
+                // Handle string escape sequences, read until we hit correct escape character.
+                // Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
                 '\\' if self.first_char() == '\\' || self.first_char() == '"' =>{
                     self.next_char();
                 }
@@ -665,6 +666,52 @@ impl <'a> Lexer<'a>{
             }
         }
         false
+    }
+
+    fn handle_decimal(&mut self) -> bool{
+        let mut dec_flag = false;
+        loop{
+            match self.first_char(){
+                '0'..='9' => {
+                    dec_flag = true;
+                    self.next_char();
+                },
+                '_' => {self.next_char();},
+                _ => break,
+            }
+        }
+        dec_flag
+    }
+
+    fn handle_hex(&mut self) -> bool {
+        let mut hex_flag = false;
+        loop{
+            match self.first_char(){
+                // Pipe for pattern matching.
+                '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                    hex_flag = true;
+                    self.next_char();
+                },
+                '_' => {self.next_char();},
+                _ => break,
+            }
+        }
+        hex_flag
+    }
+
+    fn handle_float(&mut self) -> bool{
+        let mut flt_flag = false;
+        loop{
+            match self.first_char(){
+                '0'..='9' | '.' => {
+                    flt_flag = true;
+                    self.next_char();
+                },
+                '_' => {self.next_char();},
+                _ => break,
+            }
+        }
+        flt_flag
     }
 
 
