@@ -245,6 +245,7 @@ pub(crate) struct Lexer<'a> {
 /// TODO: Test Values one by one and see if they work with match statement
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
+/// TODO: Update certain functions since Im using string input and not a direct Chars Iterator.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -314,10 +315,13 @@ impl <'a> Lexer<'a>{
     fn current_char(&self) -> char {
         self.input.nth(self.current_position)
     }
+
     /// Move to next character and consume the current one.
     fn next_char(&self) -> char {
         self.input.nth(self.current_position+1)
     }
+
+    /// Move up input a certain number of characters.
     fn next_while(&self, count: usize) -> char {
         let mut i = 0;
         while i < count{
@@ -325,22 +329,27 @@ impl <'a> Lexer<'a>{
             i += 1;
         }
     }
+
     /// Check current character, but use clone() so item doesn't get consumed.
     fn check_curr_char(&self) -> char {
         self.input.clone().nth(self.current_position)
     }
+
     /// Check next character, but use clone() so item doesn't get consumed.
     fn first_char(&self) -> char {
         self.input.clone().nth(self.current_position+1)
     }
+
     /// Check second character, but use clone() so item doesn't get consumed.
     fn second_char(&self) -> char {
         self.input.clone().nth(self.current_position+2)
     }
+
     /// Check third character, but use clone() so item doesn't get consumed.
     fn third_char(&self) -> char {
         self.input.clone().nth(self.current_position+3)
     }
+
     /// Moves a number of specified bytes
     /// Specific compiler instances require an exact jump to the correct byte number.
    fn move_bytes(&mut self, n: usize) {
@@ -601,13 +610,15 @@ impl <'a> Lexer<'a>{
         Literal
     }
 
+    /// Check for r# symbol if raw, then check rest of value for lifetime
     fn raw_lifetime(&mut self) -> TokenType{
         debug_assert!(self.prev() == 'r' && self.first() == '#');
+        self.lifetime();
         RawLifetime
     }
 
     fn lifetime(&mut self) -> TokenType{
-        debug_assert!();
+        debug_assert!(self.first_char() == ''');
         Lifetime
     }
 
@@ -713,6 +724,5 @@ impl <'a> Lexer<'a>{
         }
         flt_flag
     }
-
 
 }
