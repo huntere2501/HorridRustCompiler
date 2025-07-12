@@ -2,14 +2,16 @@
 The Lexical Analyzer breaks up code into tokens, and runs operations based on the tokens it receives.
 It will have to break up the values by type, operator, delimiter, numerics, strings, etc.
 It will also need to work with the error_handler to call errors when they are found.
+Much like the official rust compiler, the point of this Lexer is to break down Rust's main components to make actual tokenization easier later.
 */
 use std::ffi::c_char;
 use std::ops::Add;
 use phf::phf_map;
 use regex::Regex;
+use  TokenType::*;
 
 pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
-
+use crate::lexer_scanner::scanner:: Whitespace;
 
 #[derive(Clone)]
 pub enum Keyword {
@@ -137,7 +139,7 @@ pub enum RawStrError {
     TooManyDelimiters { found: u32 },
 }
 
-/// List of tokentypes and properties.
+/// List of token types and properties.
 /// Raw simply means any value that starts with r#
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum TokenType {
@@ -199,7 +201,7 @@ pub(crate) enum TokenType {
     EOF,
 }
 
-/// Useful constant values to keep for specific checks.
+// Useful constant values to keep for specific checks.
 pub(crate) const EOF_CHAR: char = '\0';
 pub const ZERO_WIDTH_JOINER: char = '\u{200d}';
 
@@ -238,58 +240,64 @@ pub(crate) struct Lexer<'a> {
     current_position: usize,
 }
 
+
+/// Multiple TODOs
+/// TODO: Test Values one by one and see if they work with match statement
+/// TODO: Spend time updating functions to work with your specific use cases.
+/// TODO: Be able to read and tokenize a simple Hello World in Rust.
+
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
     pub fn new(input: & 'a str) -> Self {
         Self {input, current_position: 0}
     }
-    /// Will read through each character in an input string and match the value to a token type.
-    /// Uses .map() to create an iterator and match statement to find correct token type.
+    // Will read through each character in an input string and match the value to a token type.
+    // Uses .map() to create an iterator and match statement to find correct token type.
     pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
         let Some(c) = self.next_char() else {
-            return Token::new(TokenType::EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
+            return Token::new( EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
         };
         let c  = self.current_char();
         c.map(|c| {
             let start = self.current_position;
             match c{
                 /// Basic check of all values char by char.
-                'a' => TokenType::Literal,
+                'a' =>  Literal,
                 c if c.is_whitespace() => self.whitespace(),
                 c if self.is_comment(&c) => self.comment(),
-                c if self.check_keyword(c) => self.keyword(),
+                c if self.check_keyword() => self.keyword(),
                 c if self.check_identifier(c) => self.identifier(),
                 'b' => self.byte_string_check(),
                 'c' => self.byte_string_check(),
-                ',' => TokenType::Comma,
-                '.' => TokenType::Dot,
-                '(' => TokenType::OpenParen,
-                ')' => TokenType::CloseParen,
-                '{' => TokenType::OpenBrace,
-                '}' => TokenType::CloseBrace,
-                '[' => TokenType::OpenBracket,
-                ']' => TokenType::CloseBracket,
-                '@' => TokenType::At,
-                '#' => TokenType::Pound,
-                '~' => TokenType::Tilde,
-                '?' => TokenType::Question,
-                ':' => TokenType::Colon,
-                '$' => TokenType::Dollar,
-                '=' => TokenType::Eq,
-                '!' => TokenType::Bang,
-                '<' => TokenType::Lt,
-                '>' => TokenType::Gt,
-                '-' => TokenType::Minus,
-                '&' => TokenType::And,
-                '|' => TokenType::Or,
-                '+' => TokenType::Plus,
-                '*' => TokenType::Star,
-                '/' => TokenType::Slash,
-                '^' => TokenType::Caret,
-                '%' => TokenType::Percent,
-                _ => TokenType::Unknown
+                ',' => Comma,
+                '.' => Dot,
+                '(' => OpenParen,
+                ')' => CloseParen,
+                '{' => OpenBrace,
+                '}' => CloseBrace,
+                '[' => OpenBracket,
+                ']' => CloseBracket,
+                '@' => At,
+                '#' => Pound,
+                '~' => Tilde,
+                '?' => Question,
+                ':' => Colon,
+                '$' => Dollar,
+                '=' => Eq,
+                '!' => Bang,
+                '<' => Lt,
+                '>' => Gt,
+                '-' => Minus,
+                '&' => And,
+                '|' => Or,
+                '+' => Plus,
+                '*' => Star,
+                '/' => Slash,
+                '^' => Caret,
+                '%' => Percent,
+                _ => Unknown
             }
 
             /// TODO After receiving TokenType need to input string to get literal and span with token.
@@ -333,6 +341,11 @@ impl <'a> Lexer<'a>{
     fn third_char(&self) -> char {
         self.input.clone().nth(self.current_position+3)
     }
+    /// Moves a number of specified bytes
+    /// Specific compiler instances require an exact jump to the correct byte number.
+   fn move_bytes(&mut self, n: usize) {
+        self.input = self.as_str()[n..].chars();
+    }
 
 
     /// Reads each character until we hit a character we don't want to consume.
@@ -350,7 +363,7 @@ impl <'a> Lexer<'a>{
     }
 
     pub fn is_whitespace(c: char) -> bool {
-        /// Stolen from official rust compiler, since whitespace check will practically be the same.
+        // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
         //
         // Note that this set is stable (ie, it doesn't change with different
@@ -379,6 +392,11 @@ impl <'a> Lexer<'a>{
         )
     }
 
+    fn whitespace(&mut self) -> TokenType{
+        self.consume_while(self.is_whitespace());
+        Whitespace
+    }
+
     fn line_comment(&mut self) -> TokenType {
         debug_assert!();
         if self.check_curr_char() == '/' && self.first_char() == '/' {
@@ -390,7 +408,7 @@ impl <'a> Lexer<'a>{
            _ => None,
         };
         self.consume_until('\n');
-        TokenType::LineComment { doc_style: check_doc,}
+        LineComment { doc_style: check_doc,}
     }
 
     fn block_comment(&mut self) -> TokenType{
@@ -403,7 +421,7 @@ impl <'a> Lexer<'a>{
             '*' if self.second_char() != '*' => Some(DocStyle::Outer),
             _ => None,
         };
-        /// Read until count is zero == block comment is finished.
+        // Read until count is zero == block comment is finished.
         let mut count = 1usize;
         while let Some(c) = self.next_char(){
             match c {
@@ -419,19 +437,19 @@ impl <'a> Lexer<'a>{
         }
 
         self.consume_until('\n');
-        TokenType::BlockComment { doc_style: check_doc, terminated: false }
+        BlockComment { doc_style: check_doc, terminated: false }
     }
     /// Used to check and remove metadata at the beginning of certain rust files.
     /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
     fn frontmatter(&mut self) -> TokenType{
         debug_assert_eq!('-', self.prev());
-        /// Track size of starting delims, used later to match the ending delims since the count should be the same. 
+        // Track size of starting delims, used later to match the ending delims since the count should be the same.
         let position = self.input.len();
         self.consume_while(|c| c == '-');
         let opening = self.input.len() - position + 1;
         debug_assert!(opening >= 3);
 
-        /// Read until we hit a '-' then check if we have found the final delimiter.
+        // Read until we hit a '-' then check if we have found the final delimiter.
         self.consume_while(|c| c != '\n' && self.is_whitespace(c));
 
         if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
@@ -444,7 +462,7 @@ impl <'a> Lexer<'a>{
         let mut found = false;
         let mut size = 0;
 
-        /// Find the closing delimiter
+        // Find the closing delimiter
         while let Some(closing) = s.find(&"-".repeat(opening)){
             let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
             if s[prev_chars_start..closing].chars().all(self.is_whitespace()){
@@ -482,20 +500,19 @@ impl <'a> Lexer<'a>{
             }
 
             if let Some(potential_closing) = potential_closing {
-                /// TODO Will need to update the bump_bytes func. I have no equal function.
-                self.bump_bytes(potential_closing);
+                self.move_bytes(potential_closing);
                 self.consume_until(b'\n');
             } else {
-                /// Consume everything else since it won't be frontmatter.
+                // Consume everything else since it won't be frontmatter.
                 self.consume_while(|_| true);
             }
         }
 
-        TokenType::Frontmatter{ has_invalid_preceding_whitespace, invalid_infostring }
+        Frontmatter{ has_invalid_preceding_whitespace, invalid_infostring }
     }
 
-    fn check_keyword(&mut self, c:char) -> bool{
-        /// Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
+    fn check_keyword(&mut self) -> bool{
+        // Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
         debug_assert!();
         let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
         let mut test_str:String = String::new();
@@ -509,11 +526,17 @@ impl <'a> Lexer<'a>{
     }
 
     fn keyword(&mut self) -> TokenType{
-        debug_assert!();
-        while !self.is_whitespace(self.curr_char()){
-            self.next_char();
+        let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
+        let mut test_str:String = String::new();
+        while !self.is_whitespace(){
+            test_str.push_str(self.first_char());
         }
-        TokenType::Keyword
+        if key_reg.is_match(test_str){
+            Keyword
+        }
+        else{
+            Unknown
+        }
     }
 
     /// Will be used in all identifier calls.
@@ -530,7 +553,7 @@ impl <'a> Lexer<'a>{
     fn identifier(&mut self) -> TokenType{
         debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
         self.consume_full_identifier();
-        TokenType::Identifier
+        Identifier
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
@@ -540,7 +563,7 @@ impl <'a> Lexer<'a>{
         self.consume_while(|c| {
             unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
         });
-        TokenType::InvalidIdentifier
+        InvalidIdentifier
     }
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
@@ -548,24 +571,24 @@ impl <'a> Lexer<'a>{
         debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
         self.next_char();
         self.consume_full_identifier();
-        TokenType::RawIdentifier
+        RawIdentifier
     }
 
     fn unkwn_prefix(&mut self) -> TokenType{
         debug_assert!();
 
-        TokenType::UnknownPrefix
+        UnknownPrefix
     }
 
     fn unkwn_prefix_lifetime(&mut self) -> TokenType{
         debug_assert!();
-        TokenType::UnknownPrefixLifetime
+        UnknownPrefixLifetime
     }
 
     fn grd_str_prefix(&mut self) -> TokenType{
         debug_assert!();
 
-        TokenType::GuardedStrPrefix
+        GuardedStrPrefix
     }
 
     fn check_literal(&mut self, c: char) -> bool{
@@ -575,28 +598,73 @@ impl <'a> Lexer<'a>{
 
     fn literal(&mut self) -> TokenType{
         debug_assert!();
-        TokenType::Literal
+        Literal
     }
 
     fn raw_lifetime(&mut self) -> TokenType{
         debug_assert!(self.prev() == 'r' && self.first() == '#');
-        TokenType::RawLifetime
+        RawLifetime
     }
 
     fn lifetime(&mut self) -> TokenType{
         debug_assert!();
-        TokenType::Lifetime
+        Lifetime
     }
 
     /// Check the byte or c string then, call identifier checks for token types.
     fn byte_string_check(&mut self) -> TokenType{
-        debug_assert!();
+
         if 1{
-            TokenType::Identifier
+            Identifier
         }
         else{
-            TokenType::InvalidIdentifier
+            InvalidIdentifier
         }
+    }
+
+    /// Helper functions ======================================================
+
+    /// Check if a string should just a single character
+    fn single_quote_string(&mut self) -> bool{
+        if self.second_char() == '\'' && self.first_char() != '\\'{
+            self.next_char();
+            self.next_char();
+            return true;
+        }
+        loop {
+            match self.first_char(){
+                '\'' => {
+                    self.next_char();
+                    return true;
+                },
+                // Check for the beginning of a comment.
+                '/' => break,
+                '\n' if self.second_char() => break,
+                '\\' => {
+                    self.next_char();
+                    self.next_char();
+                },
+                EOF_CHAR => break,
+                _ => {self.next_char();},
+            }
+        }
+        false
+    }
+
+    /// Check if a string matches the String or &str type.
+    fn double_quote_string(&mut self) -> bool{
+        while let Some(c) = self.next_char(){
+            match c{
+                '"' => {return true},
+                /// Handle string escape sequences, read until we hit correct escape character.
+                /// Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
+                '\\' if self.first_char() == '\\' || self.first_char() == '"' =>{
+                    self.next_char();
+                }
+                _ => (),
+            }
+        }
+        false
     }
 
 
