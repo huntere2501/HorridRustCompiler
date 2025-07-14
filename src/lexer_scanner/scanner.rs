@@ -629,13 +629,8 @@ impl <'a> Lexer<'a>{
 
     /// Check the byte or c string then, call identifier checks for token types.
     fn byte_string_check(&mut self) -> TokenType{
+        debug_assert!(self.prev_char() == 'c' || self.prev_char() == 'b');
 
-        if 1{
-            Identifier
-        }
-        else{
-            InvalidIdentifier
-        }
     }
 
     /// Helper functions ===========================================================================
@@ -682,6 +677,18 @@ impl <'a> Lexer<'a>{
             }
         }
         false
+    }
+
+    // Cant simply call string function since raw strings ignore escape characters.
+    fn raw_single_string(&mut self) -> bool {
+        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
+        true
+    }
+
+    // Cant simply call string function since raw strings ignore escape characters.
+    fn raw_double_string(&mut self) -> bool {
+        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
+        true
     }
 
     /// Breaks down supplied number to discern number type and Literal type.
