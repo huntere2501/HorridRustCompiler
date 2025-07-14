@@ -12,6 +12,7 @@ use  TokenType::*;
 
 pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
 use crate::lexer_scanner::scanner:: Whitespace;
+use crate::lexer_scanner::scanner::LiteralKind::{Float, Int};
 
 #[derive(Clone)]
 pub enum Keyword {
@@ -321,6 +322,11 @@ impl <'a> Lexer<'a>{
         self.input.nth(self.current_position+1)
     }
 
+    /// Checks the previous character with clone as to not consume characters.
+    fn prev_char(&self) -> char {
+        self.input.clone().nth(self.current_position-1)
+    }
+
     /// Move up input a certain number of characters.
     fn next_while(&self, count: usize) -> char {
         let mut i = 0;
@@ -535,6 +541,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn keyword(&mut self) -> TokenType{
+        // Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
         let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
         let mut test_str:String = String::new();
         while !self.is_whitespace(){
@@ -568,7 +575,6 @@ impl <'a> Lexer<'a>{
     /// Invalid identifiers include items that are not traditional rust identifiers
     /// Ex: let 8run =...... digits shouldn't start variable names.
     fn invalid_identifier(&mut self) -> TokenType {
-        debug_assert!();
         self.consume_while(|c| {
             unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
         });
@@ -585,7 +591,6 @@ impl <'a> Lexer<'a>{
 
     fn unkwn_prefix(&mut self) -> TokenType{
         debug_assert!();
-
         UnknownPrefix
     }
 
@@ -596,7 +601,6 @@ impl <'a> Lexer<'a>{
 
     fn grd_str_prefix(&mut self) -> TokenType{
         debug_assert!();
-
         GuardedStrPrefix
     }
 
@@ -610,16 +614,17 @@ impl <'a> Lexer<'a>{
         Literal
     }
 
-    /// Check for r# symbol if raw, then check rest of value for lifetime
-    fn raw_lifetime(&mut self) -> TokenType{
-        debug_assert!(self.prev() == 'r' && self.first() == '#');
-        self.lifetime();
-        RawLifetime
+    fn lifetime(&mut self) -> TokenType{
+
+        Lifetime
     }
 
-    fn lifetime(&mut self) -> TokenType{
-        debug_assert!(self.first_char() == ''');
-        Lifetime
+    /// Check for r# symbol if raw, then check rest of value for lifetime
+    /// Raw values evaluate cha by char while ignoring escape sequences.
+    fn raw_lifetime(&mut self) -> TokenType{
+        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
+        self.lifetime();
+        RawLifetime
     }
 
     /// Check the byte or c string then, call identifier checks for token types.
@@ -633,7 +638,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// Helper functions ======================================================
+    /// Helper functions ===========================================================================
 
     /// Check if a string should just a single character
     fn single_quote_string(&mut self) -> bool{
@@ -663,7 +668,7 @@ impl <'a> Lexer<'a>{
     }
 
     /// Check if a string matches the String or &str type.
-    /// Used for other tokentype checks (literals, keywords, etc.)
+    /// Used for other token type checks (literals, keywords, etc.)
     fn double_quote_string(&mut self) -> bool{
         while let Some(c) = self.next_char(){
             match c{
@@ -677,6 +682,65 @@ impl <'a> Lexer<'a>{
             }
         }
         false
+    }
+
+    /// Breaks down supplied number to discern number type and Literal type.
+    fn handle_number(&mut self, c: char) -> LiteralKind {
+        // Check if previous value is a number between 0-9
+        debug_assert!('0' <= self.prev_char() && self.prev_char() <= '9');
+        let mut base = Base::Decimal;
+
+        if c == '0' {
+            match self.first_char() {
+                'b' => {
+                    self.next_char();
+                    base = Base::Binary;
+                    if !self.handle_decimal() {
+                        Int { base: base, empty_int: true };
+                    }
+                },
+                'o' => {
+                    self.next_char();
+                    base = Base::Octal;
+                    if !self.handle_decimal() {
+                        Int { base: base, empty_int: true };
+                    }
+                },
+                'x' => {
+                    self.next_char();
+                    base = Base::Hexadecimal;
+                    if !self.handle_hex() {
+                        Int { base: base, empty_int: true };
+                    }
+                },
+                '0'..='9' | '_' => {
+                    self.handle_decimal();
+                    Int { base: base, empty_int: false };
+                }
+                _ => return Int { base: base, empty_int: false },
+            }
+        } else {
+            self.handle_decimal();
+        }
+
+        // Check for Float Values
+        if self.second_char() == '.' && self.third_char().is_ascii_digit() {
+            let mut empty_expo = false;
+            self.next_char();
+            self.handle_decimal();
+
+            match self.first_char() {
+                // Handle scientific notation numbers.
+                'e' | 'E' => {
+                    self.next_char();
+                    empty_expo = self.handle_float();
+                    return Float { base: base, empty_exponent: empty_expo };
+                }
+                _ => return Float { base: base, empty_exponent: false }
+            }
+        }
+        // Default case: return integer
+        Int { base: base, empty_int: false }
     }
 
     fn handle_decimal(&mut self) -> bool{
