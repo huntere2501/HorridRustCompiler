@@ -14,87 +14,6 @@ pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
 use crate::lexer_scanner::scanner:: Whitespace;
 use crate::lexer_scanner::scanner::LiteralKind::{Float, Int};
 
-#[derive(Clone)]
-pub enum Keyword {
-    As,
-    Continue,
-    Break,
-    Const,
-    Crate,
-    Else,
-    Enum,
-    Extern,
-    False,
-    Fn,
-    For,
-    If,
-    Impl,
-    In,
-    Let,
-    Loop,
-    Match,
-    Mod,
-    Move,
-    Mut,
-    Pub,
-    Ref,
-    Return,
-    Static,
-    Struct,
-    Super,
-    Trait,
-    True,
-    Type,
-    Unsafe,
-    Use,
-    Where,
-    While,
-    Async,
-    Await,
-    Dyn
-}
-static KEYWORDS: phf::Map<&'static str, Keyword> = phf_map! {
-    "loop" => Keyword::Loop,
-    "continue" => Keyword::Continue,
-    "break" => Keyword::Break,
-    "fn" => Keyword::Fn,
-    "extern" => Keyword::Extern,
-    "as" => Keyword::As,
-    "const" => Keyword::Const,
-    "crate" => Keyword::Crate,
-    "else" => Keyword::Else,
-    "enum" => Keyword::Enum,
-    "false" => Keyword::False,
-    "for" => Keyword::For,
-    "if" => Keyword::If,
-    "impl" => Keyword::Impl,
-    "in" => Keyword::In,
-    "let" => Keyword::Let,
-    "match" => Keyword::Match,
-    "mod" => Keyword::Mod,
-    "move" => Keyword::Move,
-    "mut" => Keyword::Mut,
-    "pub" => Keyword::Pub,
-    "ref" => Keyword::Ref,
-    "return" => Keyword::Return,
-    "static" => Keyword::Static,
-    "struct" => Keyword::Struct,
-    "super" => Keyword::Super,
-    "trait" => Keyword::Trait,
-    "true" => Keyword::True,
-    "type" => Keyword::Type,
-    "unsafe" => Keyword::Unsafe,
-    "use" => Keyword::Use,
-    "where" => Keyword::Where,
-    "while" => Keyword::While,
-    "async" => Keyword::Async,
-    "await" => Keyword::Await,
-    "dyn" => Keyword::Dyn,
-};
-
-/// Set regex for keywords at compile time.
-pub static KEYWORD_PATTERN: &str = r"\b(loop|continue|break|fn|extern|as|const|crate|else|enum|false|for|if|impl|in|let|match|mod|move|mut|pub|ref|return|static|struct|super|trait|true|type|unsafe|use|where|while|async|await|dyn)\b";
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
     /// Used to handle all types of comment types that Rust has.
@@ -526,38 +445,9 @@ impl <'a> Lexer<'a>{
         Frontmatter{ has_invalid_preceding_whitespace, invalid_infostring }
     }
 
-    fn check_keyword(&mut self) -> bool{
-        // Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
-        debug_assert!();
-        let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
-        let mut test_str:String = String::new();
-        while !self.is_whitespace(){
-            test_str.push_str(self.first_char());
-        }
-        if key_reg.is_match(test_str){
-            true
-        }
-        else { false }
-    }
-
-    fn keyword(&mut self) -> TokenType{
-        // Basic unwrap() used since KEYWORD_PATTERN will always exist => Some is always returned.
-        let key_reg = Regex::new(KEYWORD_PATTERN).unwrap();
-        let mut test_str:String = String::new();
-        while !self.is_whitespace(){
-            test_str.push_str(self.first_char());
-        }
-        if key_reg.is_match(test_str){
-            Keyword
-        }
-        else{
-            Unknown
-        }
-    }
-
     /// Will be used in all identifier calls.
     /// Checks the first value and subsequent values for if they match the identifier.
-    fn consume_full_identifier(&mut self){
+    fn consume_full_identifier_or_keyword(&mut self){
         if !unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
             return
         }
@@ -566,7 +456,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    fn identifier(&mut self) -> TokenType{
+    fn identifier_or_keyword(&mut self) -> TokenType{
         debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
         self.consume_full_identifier();
         Identifier
@@ -574,7 +464,7 @@ impl <'a> Lexer<'a>{
 
     /// Invalid identifiers include items that are not traditional rust identifiers
     /// Ex: let 8run =...... digits shouldn't start variable names.
-    fn invalid_identifier(&mut self) -> TokenType {
+    fn invalid_identifier_or_keyword(&mut self) -> TokenType {
         self.consume_while(|c| {
             unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
         });
@@ -602,16 +492,6 @@ impl <'a> Lexer<'a>{
     fn grd_str_prefix(&mut self) -> TokenType{
         debug_assert!();
         GuardedStrPrefix
-    }
-
-    fn check_literal(&mut self, c: char) -> bool{
-        debug_assert!();
-        return true
-    }
-
-    fn literal(&mut self) -> TokenType{
-        debug_assert!();
-        Literal
     }
 
     fn lifetime(&mut self) -> TokenType{
@@ -677,6 +557,29 @@ impl <'a> Lexer<'a>{
             }
         }
         false
+    }
+
+    fn check_raw_string(&mut self, len: u32) -> Result<u32, RawStrError> {
+        let start = self.current_position;
+        let mut terminator = None;
+        let mut hashes = 0;
+        let mut consumed = 0;
+        while self.first_char() == '#'{
+            consumed += 1;
+            self.next_char();
+        }
+        let start_hash = consumed;
+        match self.next_char() {
+            Some('"') => (),
+            c => {
+                let c = c.unwrap_or(EOF_CHAR);
+                return Err(RawStrError::InvalidStarter { bad_char: c });
+            }
+        }
+
+        loop {
+            break
+        }
     }
 
     // Cant simply call string function since raw strings ignore escape characters.
