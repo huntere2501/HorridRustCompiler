@@ -8,7 +8,8 @@ use std::ffi::c_char;
 use std::ops::Add;
 use phf::phf_map;
 use regex::Regex;
-use  TokenType::*;
+use TokenType::*;
+use std::str::Chars;
 
 pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
 use crate::lexer_scanner::scanner:: Whitespace;
@@ -75,10 +76,9 @@ pub(crate) enum TokenType {
         has_invalid_preceding_whitespace: bool,
         invalid_infostring: bool,
     },
-    Keyword,
-    Identifier,
-    InvalidIdentifier,
+    Identifier_or_Keyword,
     RawIdentifier,
+    InvalidIdentifier,
     UnknownPrefix,
     UnknownPrefixLifetime,
     RawLifetime,
@@ -166,6 +166,7 @@ pub(crate) struct Lexer<'a> {
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 /// TODO: Update certain functions since Im using string input and not a direct Chars Iterator.
+/// TODO: Main compiler takes in bytes directly instead of chars == Figure out why.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -180,9 +181,9 @@ impl <'a> Lexer<'a>{
         let Some(c) = self.next_char() else {
             return Token::new( EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
         };
-        let c  = self.current_char();
+        let c:char  = self.current_char();
         c.map(|c| {
-            let start = self.current_position;
+            let start:usize = self.current_position;
             match c{
                 /// Basic check of all values char by char.
                 'a' =>  Literal,
@@ -222,9 +223,9 @@ impl <'a> Lexer<'a>{
             }
 
             /// TODO After receiving TokenType need to input string to get literal and span with token.
-            let end = self.current_position;
-            let literal = self.input[start..end].to_string();
-            let span = TextSpan::new(start, end, literal);
+            let end:usize = self.current_position;
+            let literal:String = self.input[start..end].to_string();
+            let span:TextSpan = TextSpan::new(start, end, literal);
             Token::new(c, span)
         })
     }
@@ -336,7 +337,7 @@ impl <'a> Lexer<'a>{
         if self.check_curr_char() == '/' && self.first_char() == '/' {
             self.next_char();
         }
-        let check_doc = match self.first_char() {
+        let check_doc:Option<DocStyle> = match self.first_char() {
             '!' => Some(DocStyle::Inner),
             '/' if self.second_char() != '/' => Some(DocStyle::Outer),
            _ => None,
@@ -350,13 +351,13 @@ impl <'a> Lexer<'a>{
         if self.check_curr_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
-        let check_doc = match self.first_char() {
+        let check_doc:Option<DocStyle> = match self.first_char() {
             '!' => Some(DocStyle::Inner),
             '*' if self.second_char() != '*' => Some(DocStyle::Outer),
             _ => None,
         };
         // Read until count is zero == block comment is finished.
-        let mut count = 1usize;
+        let mut count:usize = 1usize;
         while let Some(c) = self.next_char(){
             match c {
                 '/' if self.first_char() == '*' => {
@@ -378,9 +379,9 @@ impl <'a> Lexer<'a>{
     fn frontmatter(&mut self) -> TokenType{
         debug_assert_eq!('-', self.prev());
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
-        let position = self.input.len();
+        let position:usize = self.input.len();
         self.consume_while(|c| c == '-');
-        let opening = self.input.len() - position + 1;
+        let opening:usize = self.input.len() - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
@@ -393,8 +394,8 @@ impl <'a> Lexer<'a>{
         self.consume_while(|c| c != '\n' && self.is_whitespace(c));
         self.first_char() != '\n';
         let mut s = self.input.as_str();
-        let mut found = false;
-        let mut size = 0;
+        let mut found:bool = false;
+        let mut size:i32 = 0;
 
         // Find the closing delimiter
         while let Some(closing) = s.find(&"-".repeat(opening)){
@@ -459,7 +460,7 @@ impl <'a> Lexer<'a>{
     fn identifier_or_keyword(&mut self) -> TokenType{
         debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
         self.consume_full_identifier();
-        Identifier
+        Identifier_or_Keyword
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
@@ -495,7 +496,6 @@ impl <'a> Lexer<'a>{
     }
 
     fn lifetime(&mut self) -> TokenType{
-
         Lifetime
     }
 
@@ -508,9 +508,15 @@ impl <'a> Lexer<'a>{
     }
 
     /// Check the byte or c string then, call identifier checks for token types.
-    fn byte_string_check(&mut self) -> TokenType{
-        debug_assert!(self.prev_char() == 'c' || self.prev_char() == 'b');
+    fn c_string_check(&mut self) -> LiteralKind{
+        debug_assert!(self.prev_char() == 'c');
+        LiteralKind::Char { terminated: false }
+    }
 
+    /// Check the byte or c string then, call identifier checks for token types.
+    fn byte_string_check(&mut self) -> LiteralKind{
+        debug_assert!(self.prev_char() == 'b');
+        LiteralKind::ByteStr { terminated: false }
     }
 
     /// Helper functions ===========================================================================
@@ -559,39 +565,87 @@ impl <'a> Lexer<'a>{
         false
     }
 
+    /// Used to handle raw string checking. Used in other functions for single and double string/character checking.
+    /// Raw strings are strings that allow the usage of " or ' or ` while still creating an acceptable string.
     fn check_raw_string(&mut self, len: u32) -> Result<u32, RawStrError> {
-        let start = self.current_position;
-        let mut terminator = None;
-        let mut hashes = 0;
-        let mut consumed = 0;
-        while self.first_char() == '#'{
-            consumed += 1;
+        // Program will read through string char by char.
+        // A count of the amount of # will be processed. These will be used to verify that they are the correct number of hashes.
+        // If # numbers don't match then we error out since we don't have a valid raw string.
+        debug_assert!(self.prev_char() == 'r');
+        let mut count: u32 = 0;
+        let mut max_count:u32 = 0;
+        let start:usize = self.current_position;
+        let mut possible_terminator_offset:Option<u32> = None;
+
+        while self.first_char() == '#' {
+            count += 1;
             self.next_char();
         }
-        let start_hash = consumed;
-        match self.next_char() {
+
+        let start_count:u32 = count;
+
+        match self.next_char(){
             Some('"') => (),
             c => {
-                let c = c.unwrap_or(EOF_CHAR);
+                let c_option:Option<char> = Some(c);
+                let c = c_option.unwrap_or(EOF_CHAR);
                 return Err(RawStrError::InvalidStarter { bad_char: c });
             }
         }
 
         loop {
-            break
+            self.consume_until(char::from(b'"'));
+            if self.is_eof() {
+                return Err(RawStrError::NoTerminator {
+                    expected: start_count,
+                    found: max_count,
+                    possible_terminator_offset,
+                });
+            }
+
+            self.next_char();
+            let mut end_count = 0;
+            while self.first_char() == '#' && end_count < start_count{
+                end_count += 1;
+                self.next_char();
+            }
+
+            if start_count == end_count{
+                Ok(start_count)
+            }
+            else {
+                possible_terminator_offset = Some(self.current_position - start - end_count + len);
+                max_count = end_count;
+            }
         }
     }
 
     // Cant simply call string function since raw strings ignore escape characters.
     fn raw_single_string(&mut self) -> bool {
         debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
-        true
+        match self.check_raw_string(2){
+            Ok(1) => self.single_quote_string(),
+            Err(RawStrError::NoTerminator {
+                    expected: count,
+                    found: max_count,
+                    possible_terminator_offset
+                }) => false,
+            _ => false,
+        }
     }
 
     // Cant simply call string function since raw strings ignore escape characters.
     fn raw_double_string(&mut self) -> bool {
         debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
-        true
+        match self.check_raw_string(2){
+            Ok(1) => self.double_quote_string(),
+            Err(RawStrError::NoTerminator {
+                    expected: count,
+                    found: max_count,
+                    possible_terminator_offset
+                }) => false,
+            _ => false,
+        }
     }
 
     /// Breaks down supplied number to discern number type and Literal type.
@@ -635,7 +689,7 @@ impl <'a> Lexer<'a>{
 
         // Check for Float Values
         if self.second_char() == '.' && self.third_char().is_ascii_digit() {
-            let mut empty_expo = false;
+            let mut empty_expo:bool = false;
             self.next_char();
             self.handle_decimal();
 
@@ -654,7 +708,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn handle_decimal(&mut self) -> bool{
-        let mut dec_flag = false;
+        let mut dec_flag:bool = false;
         loop{
             match self.first_char(){
                 '0'..='9' => {
@@ -669,7 +723,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn handle_hex(&mut self) -> bool {
-        let mut hex_flag = false;
+        let mut hex_flag:bool = false;
         loop{
             match self.first_char(){
                 // Pipe for pattern matching.
@@ -685,7 +739,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn handle_float(&mut self) -> bool{
-        let mut flt_flag = false;
+        let mut flt_flag:bool = false;
         loop{
             match self.first_char(){
                 '0'..='9' | '.' => {
@@ -698,5 +752,4 @@ impl <'a> Lexer<'a>{
         }
         flt_flag
     }
-
 }
