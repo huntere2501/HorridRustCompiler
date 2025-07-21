@@ -298,6 +298,10 @@ impl <'a> Lexer<'a>{
         }
     }
 
+    fn move_pos_in_token(&mut self, len:u32){
+        self.current_position = len as usize;
+    }
+
     pub fn is_whitespace(c: char) -> bool {
         // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
@@ -564,6 +568,39 @@ impl <'a> Lexer<'a>{
             }
         }
         false
+    }
+    fn grd_double_quote_string(&mut self) -> Option<GuardedStr> {
+        debug_assert!(self.prev_char() != '#');
+        let mut start_count: u32 = 0;
+        while self.first_char() == '#' {
+            start_count += 1;
+            self.next_char();
+        }
+        if self.first_char() != '"' {
+            None
+        }
+        self.next_char();
+        debug_assert!(self.prev_char() == '"');
+
+        let terminated = self.double_quote_string();
+        if !terminated {
+            let token_count = self.current_position;
+            // reset position within token.
+            return Some(GuardedStr {n_hashes: start_count, terminated: false, token_len});
+        }
+
+        let mut end_count = 0;
+        while self.first_char() == '#' && end_count < start_count {
+            end_count += 1;
+            self.next_char();
+        }
+
+        // eat literal suffix
+
+        let token_count = self.current_position;
+        // reset position within token
+
+        Some(GuardedStr {n_hashes: start_count, terminated: false, token_len})
     }
 
     /// Used to handle raw string checking. Used in other functions for single and double string/character checking.
