@@ -621,30 +621,11 @@ impl <'a> Lexer<'a>{
     }
 
     // Cant simply call string function since raw strings ignore escape characters.
-    fn raw_single_string(&mut self) -> bool {
-        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
-        match self.check_raw_string(2){
-            Ok(1) => self.single_quote_string(),
-            Err(RawStrError::NoTerminator {
-                    expected: count,
-                    found: max_count,
-                    possible_terminator_offset
-                }) => false,
-            _ => false,
-        }
-    }
-
-    // Cant simply call string function since raw strings ignore escape characters.
-    fn raw_double_string(&mut self) -> bool {
-        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
-        match self.check_raw_string(2){
-            Ok(1) => self.double_quote_string(),
-            Err(RawStrError::NoTerminator {
-                    expected: count,
-                    found: max_count,
-                    possible_terminator_offset
-                }) => false,
-            _ => false,
+    fn raw_double_string(&mut self, len: u32) -> Result<u32, RawStrError> {
+        match self.check_raw_string(len){
+            Ok(1) => Ok(1),
+            Err(_) => Err(RawStrError::TooManyDelimiters { found: 1}),
+            _ => {}
         }
     }
 
