@@ -5,6 +5,7 @@ It will also need to work with the error_handler to call errors when they are fo
 Much like the official rust compiler, the point of this Lexer is to break down Rust's main components to make actual tokenization easier later.
 */
 use std::ffi::c_char;
+use std::num::TryFromIntError;
 use std::ops::Add;
 use phf::phf_map;
 use regex::Regex;
@@ -622,10 +623,10 @@ impl <'a> Lexer<'a>{
 
     // Cant simply call string function since raw strings ignore escape characters.
     fn raw_double_string(&mut self, len: u32) -> Result<u32, RawStrError> {
-        match self.check_raw_string(len){
-            Ok(1) => Ok(1),
-            Err(_) => Err(RawStrError::TooManyDelimiters { found: 1}),
-            _ => {}
+        let hash_count:u32 = self.check_raw_string(len)?;
+        match u8::try_from(hash_count){
+            Ok(num) => Ok(num as u32),
+            Err(_) => Err(RawStrError::TooManyDelimiters {found: 1}),
         }
     }
 
