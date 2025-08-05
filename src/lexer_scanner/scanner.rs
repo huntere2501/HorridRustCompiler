@@ -4,15 +4,8 @@ It will have to break up the values by type, operator, delimiter, numerics, stri
 It will also need to work with the error_handler to call errors when they are found.
 Much like the official rust compiler, the point of this Lexer is to break down Rust's main components to make actual tokenization easier later.
 */
-use std::ffi::c_char;
-use std::num::TryFromIntError;
-use std::ops::Add;
-use phf::phf_map;
-use regex::Regex;
 use TokenType::*;
 use std::str::Chars;
-
-pub use unicode_xid::UNICODE_VERSION as UNICODE_XID_VERSION;
 use crate::lexer_scanner::scanner:: Whitespace;
 use crate::lexer_scanner::scanner::LiteralKind::{Float, Int};
 
@@ -77,7 +70,7 @@ pub(crate) enum TokenType {
         has_invalid_preceding_whitespace: bool,
         invalid_infostring: bool,
     },
-    Identifier_or_Keyword,
+    IdentifierOrKeyword,
     RawIdentifier,
     InvalidIdentifier,
     UnknownPrefix,
@@ -171,7 +164,7 @@ pub(crate) struct Lexer<'a> {
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
-    pub fn new(input: & 'a str) -> Self {
+    pub fn new(input: &str) -> Self {
         Self {input, current_position: 0}
     }
     // Will read through each character in an input string and match the value to a token type.
@@ -179,21 +172,20 @@ impl <'a> Lexer<'a>{
     pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
-        let Some(c) = self.next_char() else {
-            return Token::new( EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
-        };
+        let c = self.next_char();
+        if c == EOF_CHAR {
+            return Token::new(EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
+        }
         let c:char  = self.current_char();
-        c.map(|c| {
-            let start:usize = self.current_position;
-            match c{
+        let start: usize = self.current_position;
+        let token_type = match c {
                 /// Basic check of all values char by char.
-                'a' =>  Literal,
                 c if c.is_whitespace() => self.whitespace(),
-                c if self.is_comment(&c) => self.comment(),
-                c if self.check_keyword() => self.keyword(),
-                c if self.check_identifier(c) => self.identifier(),
-                'b' => self.byte_string_check(),
-                'c' => self.byte_string_check(),
+                // c if self.is_comment(&c) => self.comment(),
+                // c if self.check_keyword() => self.keyword(),
+                // c if self.check_identifier(c) => self.identifier(),
+                // 'b' => self.byte_string_check(),
+                // 'c' => self.byte_string_check(),
                 ',' => Comma,
                 '.' => Dot,
                 '(' => OpenParen,
@@ -221,60 +213,59 @@ impl <'a> Lexer<'a>{
                 '^' => Caret,
                 '%' => Percent,
                 _ => Unknown
-            }
+            };
 
             /// TODO After receiving TokenType need to input string to get literal and span with token.
             let end:usize = self.current_position;
             let literal:String = self.input[start..end].to_string();
             let span:TextSpan = TextSpan::new(start, end, literal);
-            Token::new(c, span)
-        })
-    }
+            Token::new(token_type, span)
+        }
 
     /// For checking single character values.
     /// Using clone copies an iterator which means the value is not consumed until we want to consume it.
     /// Only current_char gets consumes, second and third_char are used for checks.
-    fn current_char(&self) -> char {
-        self.input.nth(self.current_position)
+    fn current_char(&mut self) -> char {
+        self.input.chars().nth(self.current_position).unwrap()
     }
 
     /// Move to next character and consume the current one.
-    fn next_char(&self) -> char {
-        self.input.nth(self.current_position+1)
+    fn next_char(&mut self) -> char {
+        self.input.chars().nth(self.current_position+1).unwrap()
     }
 
     /// Checks the previous character with clone as to not consume characters.
     fn prev_char(&self) -> char {
-        self.input.clone().nth(self.current_position-1)
+        self.input.clone().chars().nth(self.current_position-1).unwrap()
     }
 
     /// Move up input a certain number of characters.
-    fn next_while(&self, count: usize) -> char {
+    fn next_while(&mut self, count: usize) {
         let mut i = 0;
         while i < count{
-            self.input.nth(self.current_position+1);
+            self.input.chars().nth(self.current_position+1).unwrap();
             i += 1;
         }
     }
 
     /// Check current character, but use clone() so item doesn't get consumed.
     fn check_curr_char(&self) -> char {
-        self.input.clone().nth(self.current_position)
+        self.input.clone().chars().nth(self.current_position).unwrap()
     }
 
     /// Check next character, but use clone() so item doesn't get consumed.
     fn first_char(&self) -> char {
-        self.input.clone().nth(self.current_position+1)
+        self.input.clone().chars().nth(self.current_position+1).unwrap()
     }
 
     /// Check second character, but use clone() so item doesn't get consumed.
     fn second_char(&self) -> char {
-        self.input.clone().nth(self.current_position+2)
+        self.input.clone().chars().nth(self.current_position+2).unwrap()
     }
 
     /// Check third character, but use clone() so item doesn't get consumed.
     fn third_char(&self) -> char {
-        self.input.clone().nth(self.current_position+3)
+        self.input.clone().chars().nth(self.current_position+3).unwrap()
     }
 
     /// Moves a number of specified bytes
@@ -291,8 +282,7 @@ impl <'a> Lexer<'a>{
         }
     }
     /// Consumes while character value is equal to what is provided.
-    /// Returns a bool from a function with a wildcard input(_).
-    fn consume_while(&mut self, c: fn(_) -> bool)  {
+    fn consume_while(&mut self, c: char)  {
         while self.current_char() == c {
             self.next_char();
         }
@@ -338,7 +328,6 @@ impl <'a> Lexer<'a>{
     }
 
     fn line_comment(&mut self) -> TokenType {
-        debug_assert!();
         if self.check_curr_char() == '/' && self.first_char() == '/' {
             self.next_char();
         }
@@ -352,7 +341,6 @@ impl <'a> Lexer<'a>{
     }
 
     fn block_comment(&mut self) -> TokenType{
-        debug_assert!();
         if self.check_curr_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
@@ -382,11 +370,11 @@ impl <'a> Lexer<'a>{
     /// Used to check and remove metadata at the beginning of certain rust files.
     /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
     fn frontmatter(&mut self) -> TokenType{
-        debug_assert_eq!('-', self.prev());
+        debug_assert_eq!('-', self.prev_char());
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
         let position:usize = self.input.len();
         self.consume_while(|c| c == '-');
-        let opening:usize = self.input.len() - position + 1;
+        let opening:usize = Self::input.count() - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
@@ -398,7 +386,7 @@ impl <'a> Lexer<'a>{
         }
         self.consume_while(|c| c != '\n' && self.is_whitespace(c));
         self.first_char() != '\n';
-        let mut s = self.input.as_str();
+        let mut s: &str = self.input;
         let mut found:bool = false;
         let mut size:i32 = 0;
 
@@ -406,8 +394,8 @@ impl <'a> Lexer<'a>{
         while let Some(closing) = s.find(&"-".repeat(opening)){
             let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
             if s[prev_chars_start..closing].chars().all(self.is_whitespace()){
-                self.next_while(size + closing);
-                self.consume_until(b'\n');
+                self.next_while((size + closing).try_into().unwrap());
+                self.consume_until('\n');
                 found = true;
                 break;
             }
@@ -418,7 +406,7 @@ impl <'a> Lexer<'a>{
         }
         if !found{
 
-            let mut rest = self.input.as_str();
+            let mut rest: &str = Self::input;
 
             let mut potential_closing = rest
                 .find("\n---")
@@ -448,7 +436,7 @@ impl <'a> Lexer<'a>{
             }
         }
 
-        Frontmatter{ has_invalid_preceding_whitespace, invalid_infostring }
+        Frontmatter{ has_invalid_preceding_whitespace: false, invalid_infostring: false }
     }
 
     /// Will be used in all identifier calls.
@@ -458,14 +446,14 @@ impl <'a> Lexer<'a>{
             return
         }
         else{
-            self.consume_while(unicode_xid::UnicodeXID::is_xid_start);
+            self.consume_while(self.first_char());
         }
     }
 
     fn identifier_or_keyword(&mut self) -> TokenType{
         debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
         self.consume_full_identifier();
-        Identifier_or_Keyword
+        IdentifierOrKeyword
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
@@ -485,24 +473,28 @@ impl <'a> Lexer<'a>{
         RawIdentifier
     }
 
-    fn unkwn_prefix(&mut self) -> TokenType{
-        debug_assert!();
-        UnknownPrefix
+    fn check_literal(&mut self) -> TokenType{
+        Literal {kind: LiteralKind::Char {terminated:true}, suffix_start: 0}
     }
 
-    fn unkwn_prefix_lifetime(&mut self) -> TokenType{
-        debug_assert!();
-        UnknownPrefixLifetime
-    }
-
-    fn grd_str_prefix(&mut self) -> TokenType{
-        debug_assert!();
-        GuardedStrPrefix
-    }
-
-    fn lifetime(&mut self) -> TokenType{
-        Lifetime
-    }
+    // fn unkwn_prefix(&mut self) -> TokenType{
+    //     debug_assert!();
+    //     UnknownPrefix
+    // }
+    //
+    // fn unkwn_prefix_lifetime(&mut self) -> TokenType{
+    //     debug_assert!();
+    //     UnknownPrefixLifetime
+    // }
+    //
+    // fn grd_str_prefix(&mut self) -> TokenType{
+    //     debug_assert!();
+    //     GuardedStrPrefix
+    // }
+    //
+    // fn lifetime(&mut self) -> TokenType{
+    //     Lifetime
+    // }
 
     /// Check for r# symbol if raw, then check rest of value for lifetime
     /// Raw values evaluate cha by char while ignoring escape sequences.
@@ -584,9 +576,9 @@ impl <'a> Lexer<'a>{
 
         let terminated = self.double_quote_string();
         if !terminated {
-            let token_count = self.current_position;
+            let token_count: usize = self.current_position;
             // reset position within token.
-            return Some(GuardedStr {n_hashes: start_count, terminated: false, token_len});
+            return Some(GuardedStr {n_hashes: start_count, terminated: false, token_len: token_count as u32 });
         }
 
         let mut end_count = 0;
@@ -597,10 +589,10 @@ impl <'a> Lexer<'a>{
 
         // eat literal suffix
 
-        let token_count = self.current_position;
+        let token_count: usize = self.current_position;
         // reset position within token
 
-        Some(GuardedStr {n_hashes: start_count, terminated: false, token_len})
+        Some(GuardedStr {n_hashes: start_count, terminated: false, token_len: token_count as u32})
     }
 
     /// Used to handle raw string checking. Used in other functions for single and double string/character checking.
@@ -667,6 +659,8 @@ impl <'a> Lexer<'a>{
         }
     }
 
+
+    /// TODO Break down numbers into specific tokens rather than LiteralKind.
     /// Breaks down supplied number to discern number type and Literal type.
     fn handle_number(&mut self, c: char) -> LiteralKind {
         // Check if previous value is a number between 0-9
