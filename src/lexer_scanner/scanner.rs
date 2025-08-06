@@ -163,11 +163,11 @@ pub(crate) struct Lexer<'a> {
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
-    pub fn new(input: &str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         Self {input, current_position: 0}
     }
-    // Will read through each character in an input string and match the value to a token type.
-    // Uses .map() to create an iterator and match statement to find correct token type.
+    /// Will read through each character in an input string and match the value to a token type.
+    /// Uses .map() to create an iterator and match statement to find correct token type.
     pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
@@ -178,8 +178,7 @@ impl <'a> Lexer<'a>{
         let c:char  = self.current_char();
         let start: usize = self.current_position;
         let token_type = match c {
-                /// Basic check of all values char by char.
-                c if self.check_whitespace(c) => self.whitespace(c),
+                c if self.check_whitespace(c) => self.whitespace(),
                 // c if self.is_comment(&c) => self.comment(),
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
@@ -214,7 +213,7 @@ impl <'a> Lexer<'a>{
                 _ => Unknown
             };
 
-            /// TODO After receiving TokenType need to input string to get literal and span with token.
+            // TODO After receiving TokenType need to input string to get literal and span with token.
             let end:usize = self.current_position;
             let literal:String = self.input[start..end].to_string();
             let span:TextSpan = TextSpan::new(start, end, literal);
@@ -285,9 +284,11 @@ impl <'a> Lexer<'a>{
             self.next_char();
         }
     }
+
+    // TODO Need to update consume_while to handle multiple functions.
     /// Consumes while character value is equal to what is provided.
-    fn consume_while<T>(&mut self, c: fn(T) -> bool) {
-        while c(self.current_char()) {
+    fn consume_while<T>(&mut self, mut c: fn(T) -> bool) {
+        while c(self.current_char()) && !c(EOF_CHAR) {
             self.next_char();
         }
     }
@@ -326,8 +327,8 @@ impl <'a> Lexer<'a>{
         )
     }
 
-    fn whitespace(&mut self, c:char) -> TokenType{
-        self.consume_while(self.check_whitespace(c));
+    fn whitespace(&mut self) -> TokenType{
+        self.consume_while(|c| self.check_whitespace(c));
         Whitespace
     }
 
@@ -355,7 +356,7 @@ impl <'a> Lexer<'a>{
         };
         // Read until count is zero == block comment is finished.
         let mut count:usize = 1usize;
-        while let Some(c) = self.next_char(){
+        while let Some(c) = Some(self.next_char()){
             match c {
                 '/' if self.first_char() == '*' => {
                     self.next_char();
@@ -378,7 +379,7 @@ impl <'a> Lexer<'a>{
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
         let position:usize = self.input.len();
         self.consume_while(|c| c == '-');
-        let opening:usize = self.input.count() - position + 1;
+        let opening:usize = self.input.chars().count() - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
@@ -397,8 +398,8 @@ impl <'a> Lexer<'a>{
         // Find the closing delimiter
         while let Some(closing) = s.find(&"-".repeat(opening)){
             let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
-            if s[prev_chars_start..closing].chars().all(self.check_whitespace()){
-                self.next_while((size + closing).try_into().unwrap());
+            if s[prev_chars_start..closing].chars().all(|c:char| self.check_whitespace(c)){
+                self.next_while((size + closing as i32).try_into().unwrap());
                 self.consume_until('\n');
                 found = true;
                 break;
@@ -422,7 +423,7 @@ impl <'a> Lexer<'a>{
             if potential_closing.is_none() {
                 while let Some(closing) = rest.find("---") {
                     let preceding_chars_start = rest[..closing].rfind("\n").map_or(0, |i| i + 1);
-                    if rest[preceding_chars_start..closing].chars().all(self.check_whitespace()) {
+                    if rest[preceding_chars_start..closing].chars().all(|c| self.check_whitespace(c)) {
                         potential_closing = Some(closing);
                         break;
                     } else {
@@ -433,7 +434,7 @@ impl <'a> Lexer<'a>{
 
             if let Some(potential_closing) = potential_closing {
                 self.move_chars(potential_closing);
-                self.consume_until(b'\n');
+                self.consume_until('\n');
             } else {
                 // Consume everything else since it won't be frontmatter.
                 self.consume_while(|_| true);
@@ -537,7 +538,7 @@ impl <'a> Lexer<'a>{
                 },
                 // Check for the beginning of a comment.
                 '/' => break,
-                '\n' if Some(self.second_char()) => break,
+                '\n' if Some(self.second_char()).is_some() => break,
                 '\\' => {
                     self.next_char();
                     self.next_char();
@@ -552,7 +553,7 @@ impl <'a> Lexer<'a>{
     /// Check if a string matches the String or &str type.
     /// Used for other token type checks (literals, keywords, etc.)
     fn double_quote_string(&mut self) -> bool{
-        while let Some(c) = self.next_char(){
+        while let Some(c) = Some(self.next_char()){
             match c{
                 '"' => {return true},
                 // Handle string escape sequences, read until we hit correct escape character.
@@ -619,7 +620,7 @@ impl <'a> Lexer<'a>{
         let start_count:u32 = count;
 
         match self.next_char(){
-            Some('"') => (),
+            '"' => (),
             c => {
                 let c_option:Option<char> = Some(c);
                 let c = c_option.unwrap_or(EOF_CHAR);
@@ -645,7 +646,7 @@ impl <'a> Lexer<'a>{
             }
 
             if start_count == end_count{
-                Ok(start_count).expect("START NOT EQUAL TO END!");
+                println!("Successful!");
             }
             else {
                 possible_terminator_offset = Some(self.current_position as u32 - start as u32 - end_count + len);
@@ -706,7 +707,7 @@ impl <'a> Lexer<'a>{
 
         // Check for Float Values
         if self.second_char() == '.' && self.third_char().is_ascii_digit() {
-            let mut empty_expo:bool = false;
+            let empty_expo:bool;
             self.next_char();
             self.handle_decimal();
 
