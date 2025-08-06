@@ -5,7 +5,6 @@ It will also need to work with the error_handler to call errors when they are fo
 Much like the official rust compiler, the point of this Lexer is to break down Rust's main components to make actual tokenization easier later.
 */
 use TokenType::*;
-use std::str::Chars;
 use crate::lexer_scanner::scanner:: Whitespace;
 use crate::lexer_scanner::scanner::LiteralKind::{Float, Int};
 
@@ -180,7 +179,7 @@ impl <'a> Lexer<'a>{
         let start: usize = self.current_position;
         let token_type = match c {
                 /// Basic check of all values char by char.
-                c if c.is_whitespace() => self.whitespace(),
+                c if self.check_whitespace(c) => self.whitespace(c),
                 // c if self.is_comment(&c) => self.comment(),
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
@@ -268,12 +267,17 @@ impl <'a> Lexer<'a>{
         self.input.clone().chars().nth(self.current_position+3).unwrap()
     }
 
-    /// Moves a number of specified bytes
-    /// Specific compiler instances require an exact jump to the correct byte number.
-   fn move_bytes(&mut self, n: usize) {
-        self.input = self.as_str()[n..].chars();
+    /// Move a specified number of characters.
+    fn move_chars(&mut self, n: usize) {
+        for _ in 0..n {
+            if let Some((next_pos, _)) = self.input[self.current_position..].char_indices().nth(1) {
+                self.current_position += next_pos;
+            } else {
+                self.current_position = self.input.len();
+                break;
+            }
+        }
     }
-
 
     /// Reads each character until we hit a character we don't want to consume.
     fn consume_until(&mut self, c: char) {
@@ -282,8 +286,8 @@ impl <'a> Lexer<'a>{
         }
     }
     /// Consumes while character value is equal to what is provided.
-    fn consume_while(&mut self, c: char)  {
-        while self.current_char() == c {
+    fn consume_while<T>(&mut self, c: fn(T) -> bool) {
+        while c(self.current_char()) {
             self.next_char();
         }
     }
@@ -292,7 +296,7 @@ impl <'a> Lexer<'a>{
         self.current_position = len as usize;
     }
 
-    pub fn is_whitespace(c: char) -> bool {
+    pub fn check_whitespace(&mut self, c: char) -> bool {
         // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
         //
@@ -322,8 +326,8 @@ impl <'a> Lexer<'a>{
         )
     }
 
-    fn whitespace(&mut self) -> TokenType{
-        self.consume_while(self.is_whitespace());
+    fn whitespace(&mut self, c:char) -> TokenType{
+        self.consume_while(self.check_whitespace(c));
         Whitespace
     }
 
@@ -374,17 +378,17 @@ impl <'a> Lexer<'a>{
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
         let position:usize = self.input.len();
         self.consume_while(|c| c == '-');
-        let opening:usize = Self::input.count() - position + 1;
+        let opening:usize = self.input.count() - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
-        self.consume_while(|c| c != '\n' && self.is_whitespace(c));
+        self.consume_while(|c| c != '\n' && self.check_whitespace(c));
 
         if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
             self.next_char();
             self.consume_while(|c| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
         }
-        self.consume_while(|c| c != '\n' && self.is_whitespace(c));
+        self.consume_while(|c| c != '\n' && self.check_whitespace(c));
         self.first_char() != '\n';
         let mut s: &str = self.input;
         let mut found:bool = false;
@@ -393,7 +397,7 @@ impl <'a> Lexer<'a>{
         // Find the closing delimiter
         while let Some(closing) = s.find(&"-".repeat(opening)){
             let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
-            if s[prev_chars_start..closing].chars().all(self.is_whitespace()){
+            if s[prev_chars_start..closing].chars().all(self.check_whitespace()){
                 self.next_while((size + closing).try_into().unwrap());
                 self.consume_until('\n');
                 found = true;
@@ -401,12 +405,12 @@ impl <'a> Lexer<'a>{
             }
             else{
                 s = &s[closing + opening..];
-                size += closing + opening;
+                size += closing as i32 + opening as i32;
             }
         }
         if !found{
 
-            let mut rest: &str = Self::input;
+            let mut rest: &str = self.input;
 
             let mut potential_closing = rest
                 .find("\n---")
@@ -418,7 +422,7 @@ impl <'a> Lexer<'a>{
             if potential_closing.is_none() {
                 while let Some(closing) = rest.find("---") {
                     let preceding_chars_start = rest[..closing].rfind("\n").map_or(0, |i| i + 1);
-                    if rest[preceding_chars_start..closing].chars().all(self.is_whitespace()) {
+                    if rest[preceding_chars_start..closing].chars().all(self.check_whitespace()) {
                         potential_closing = Some(closing);
                         break;
                     } else {
@@ -428,7 +432,7 @@ impl <'a> Lexer<'a>{
             }
 
             if let Some(potential_closing) = potential_closing {
-                self.move_bytes(potential_closing);
+                self.move_chars(potential_closing);
                 self.consume_until(b'\n');
             } else {
                 // Consume everything else since it won't be frontmatter.
@@ -452,14 +456,14 @@ impl <'a> Lexer<'a>{
 
     fn identifier_or_keyword(&mut self) -> TokenType{
         debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
-        self.consume_full_identifier();
+        self.consume_full_identifier_or_keyword();
         IdentifierOrKeyword
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
     /// Ex: let 8run =...... digits shouldn't start variable names.
     fn invalid_identifier_or_keyword(&mut self) -> TokenType {
-        self.consume_while(|c| {
+        self.consume_while(|c: char| {
             unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
         });
         InvalidIdentifier
@@ -467,9 +471,9 @@ impl <'a> Lexer<'a>{
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        debug_assert!(self.prev() == 'r' && self.first() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
+        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
         self.next_char();
-        self.consume_full_identifier();
+        self.consume_full_identifier_or_keyword();
         RawIdentifier
     }
 
@@ -498,23 +502,23 @@ impl <'a> Lexer<'a>{
 
     /// Check for r# symbol if raw, then check rest of value for lifetime
     /// Raw values evaluate cha by char while ignoring escape sequences.
-    fn raw_lifetime(&mut self) -> TokenType{
-        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
-        self.lifetime();
-        RawLifetime
-    }
-
-    /// Check the byte or c string then, call identifier checks for token types.
-    fn c_string_check(&mut self) -> LiteralKind{
-        debug_assert!(self.prev_char() == 'c');
-        LiteralKind::Char { terminated: false }
-    }
-
-    /// Check the byte or c string then, call identifier checks for token types.
-    fn byte_string_check(&mut self) -> LiteralKind{
-        debug_assert!(self.prev_char() == 'b');
-        LiteralKind::ByteStr { terminated: false }
-    }
+    // fn raw_lifetime(&mut self) -> TokenType{
+    //     debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
+    //     self.lifetime();
+    //     RawLifetime
+    // }
+    //
+    // /// Check the byte or c string then, call identifier checks for token types.
+    // fn c_string_check(&mut self) -> LiteralKind{
+    //     debug_assert!(self.prev_char() == 'c');
+    //     LiteralKind::Char { terminated: false }
+    // }
+    //
+    // /// Check the byte or c string then, call identifier checks for token types.
+    // fn byte_string_check(&mut self) -> LiteralKind{
+    //     debug_assert!(self.prev_char() == 'b');
+    //     LiteralKind::ByteStr { terminated: false }
+    // }
 
     /// Helper functions ===========================================================================
 
@@ -533,7 +537,7 @@ impl <'a> Lexer<'a>{
                 },
                 // Check for the beginning of a comment.
                 '/' => break,
-                '\n' if self.second_char() => break,
+                '\n' if Some(self.second_char()) => break,
                 '\\' => {
                     self.next_char();
                     self.next_char();
@@ -569,7 +573,7 @@ impl <'a> Lexer<'a>{
             self.next_char();
         }
         if self.first_char() != '"' {
-            None
+            return None
         }
         self.next_char();
         debug_assert!(self.prev_char() == '"');
@@ -625,7 +629,7 @@ impl <'a> Lexer<'a>{
 
         loop {
             self.consume_until(char::from(b'"'));
-            if self.is_eof() {
+            if self.current_char() == EOF_CHAR {
                 return Err(RawStrError::NoTerminator {
                     expected: start_count,
                     found: max_count,
@@ -641,10 +645,10 @@ impl <'a> Lexer<'a>{
             }
 
             if start_count == end_count{
-                Ok(start_count)
+                Ok(start_count).expect("START NOT EQUAL TO END!");
             }
             else {
-                possible_terminator_offset = Some(self.current_position - start - end_count + len);
+                possible_terminator_offset = Some(self.current_position as u32 - start as u32 - end_count + len);
                 max_count = end_count;
             }
         }
