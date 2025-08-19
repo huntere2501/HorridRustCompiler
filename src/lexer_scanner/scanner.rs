@@ -178,7 +178,7 @@ impl <'a> Lexer<'a>{
         let c:char  = self.current_char();
         let start: usize = self.current_position;
         let token_type = match c {
-                c if self.check_whitespace(c) => self.whitespace(),
+                c if Self::check_whitespace(c) => self.whitespace(),
                 // c if self.is_comment(&c) => self.comment(),
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
@@ -224,46 +224,46 @@ impl <'a> Lexer<'a>{
     /// Using clone copies an iterator which means the value is not consumed until we want to consume it.
     /// Only current_char gets consumes, second and third_char are used for checks.
     fn current_char(&mut self) -> char {
-        self.input.chars().nth(self.current_position).unwrap()
+        self.input.chars().nth(self.current_position).unwrap_or(EOF_CHAR)
     }
 
     /// Move to next character and consume the current one.
     fn next_char(&mut self) -> char {
-        self.input.chars().nth(self.current_position+1).unwrap()
+        self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR)
     }
 
     /// Checks the previous character with clone as to not consume characters.
     fn prev_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position-1).unwrap()
+        self.input.clone().chars().nth(self.current_position-1).unwrap_or(EOF_CHAR)
     }
 
     /// Move up input a certain number of characters.
     fn next_while(&mut self, count: usize) {
         let mut i = 0;
         while i < count{
-            self.input.chars().nth(self.current_position+1).unwrap();
+            self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
             i += 1;
         }
     }
 
     /// Check current character, but use clone() so item doesn't get consumed.
     fn check_curr_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position).unwrap()
+        self.input.clone().chars().nth(self.current_position).unwrap_or(EOF_CHAR)
     }
 
     /// Check next character, but use clone() so item doesn't get consumed.
     fn first_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+1).unwrap()
+        self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR)
     }
 
     /// Check second character, but use clone() so item doesn't get consumed.
     fn second_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+2).unwrap()
+        self.input.clone().chars().nth(self.current_position+2).unwrap_or(EOF_CHAR)
     }
 
     /// Check third character, but use clone() so item doesn't get consumed.
     fn third_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+3).unwrap()
+        self.input.clone().chars().nth(self.current_position+3).unwrap_or(EOF_CHAR)
     }
 
     /// Move a specified number of characters.
@@ -287,7 +287,7 @@ impl <'a> Lexer<'a>{
 
     // TODO Need to update consume_while to handle multiple functions.
     /// Consumes while character value is equal to what is provided.
-    fn consume_while<T>(&mut self, mut c: fn(T) -> bool) {
+    fn consume_while(&mut self, mut c:  impl FnMut(char) -> bool) {
         while c(self.current_char()) && !c(EOF_CHAR) {
             self.next_char();
         }
@@ -297,7 +297,7 @@ impl <'a> Lexer<'a>{
         self.current_position = len as usize;
     }
 
-    pub fn check_whitespace(&mut self, c: char) -> bool {
+    pub fn check_whitespace(c: char) -> bool {
         // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
         //
@@ -328,7 +328,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn whitespace(&mut self) -> TokenType{
-        self.consume_while(|c| self.check_whitespace(c));
+        self.consume_while(|c:char| Self::check_whitespace(c));
         Whitespace
     }
 
@@ -378,18 +378,18 @@ impl <'a> Lexer<'a>{
         debug_assert_eq!('-', self.prev_char());
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
         let position:usize = self.input.len();
-        self.consume_while(|c| c == '-');
+        self.consume_while(|c:char| c == '-');
         let opening:usize = self.input.chars().count() - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
-        self.consume_while(|c| c != '\n' && self.check_whitespace(c));
+        self.consume_while(|c:char| c != '\n' && Self::check_whitespace(c));
 
         if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
             self.next_char();
-            self.consume_while(|c| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
+            self.consume_while(|c:char| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
         }
-        self.consume_while(|c| c != '\n' && self.check_whitespace(c));
+        self.consume_while(|c:char| c != '\n' && Self::check_whitespace(c));
         self.first_char() != '\n';
         let mut s: &str = self.input;
         let mut found:bool = false;
@@ -397,9 +397,9 @@ impl <'a> Lexer<'a>{
 
         // Find the closing delimiter
         while let Some(closing) = s.find(&"-".repeat(opening)){
-            let prev_chars_start = s[..closing].rfind("\n").map_or(0, |i| i + 1);
-            if s[prev_chars_start..closing].chars().all(|c:char| self.check_whitespace(c)){
-                self.next_while((size + closing as i32).try_into().unwrap());
+            let prev_chars_start:usize = s[..closing].rfind("\n").map_or(0, |i| i + 1);
+            if s[prev_chars_start..closing].chars().all(|c:char| Self::check_whitespace(c)){
+                self.next_while((size + closing as i32).try_into().unwrap_or(0));
                 self.consume_until('\n');
                 found = true;
                 break;
@@ -423,7 +423,7 @@ impl <'a> Lexer<'a>{
             if potential_closing.is_none() {
                 while let Some(closing) = rest.find("---") {
                     let preceding_chars_start = rest[..closing].rfind("\n").map_or(0, |i| i + 1);
-                    if rest[preceding_chars_start..closing].chars().all(|c| self.check_whitespace(c)) {
+                    if rest[preceding_chars_start..closing].chars().all(|c| Self::check_whitespace(c)) {
                         potential_closing = Some(closing);
                         break;
                     } else {
@@ -451,7 +451,9 @@ impl <'a> Lexer<'a>{
             return
         }
         else{
-            self.consume_while(self.first_char());
+            self.consume_while(|c: char| {
+                unicode_xid::UnicodeXID::is_xid_continue(c) || c.is_ascii()
+            });
         }
     }
 
