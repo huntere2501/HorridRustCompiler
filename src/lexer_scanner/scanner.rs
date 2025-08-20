@@ -155,11 +155,10 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: Test Values one by one and see if they work with match statement
+/// TODO: PRIORITY!!!!!!: Whitespace checks are not working properly.
+/// TODO: NEXT!!!!!!!!!!: Test Values one by one and see if they work with match statement.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
-/// TODO: Update certain functions since Im using string input and not a direct Chars Iterator.
-/// TODO: Main compiler takes in bytes directly instead of chars == Figure out why.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -167,15 +166,13 @@ impl <'a> Lexer<'a>{
         Self {input, current_position: 0}
     }
     /// Will read through each character in an input string and match the value to a token type.
-    /// Uses .map() to create an iterator and match statement to find correct token type.
     pub fn next_token(&mut self) -> Token{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
-        let c = self.next_char();
+        let c:char  = self.current_char();
         if c == EOF_CHAR {
             return Token::new(EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
         }
-        let c:char  = self.current_char();
         let start: usize = self.current_position;
         let token_type = match c {
                 c if Self::check_whitespace(c) => self.whitespace(),
@@ -214,6 +211,7 @@ impl <'a> Lexer<'a>{
             };
 
             // TODO After receiving TokenType need to input string to get literal and span with token.
+            self.move_chars(1);
             let end:usize = self.current_position;
             let literal:String = self.input[start..end].to_string();
             let span:TextSpan = TextSpan::new(start, end, literal);
@@ -289,7 +287,7 @@ impl <'a> Lexer<'a>{
     /// Consumes while character value is equal to what is provided.
     fn consume_while(&mut self, mut c:  impl FnMut(char) -> bool) {
         while c(self.current_char()) && !c(EOF_CHAR) {
-            self.next_char();
+           self.next_char();
         }
     }
 
@@ -327,7 +325,9 @@ impl <'a> Lexer<'a>{
         )
     }
 
+    ///TODO: This is not processing whitespace correctly!
     fn whitespace(&mut self) -> TokenType{
+        // Probably issues with the consume_while function.
         self.consume_while(|c:char| Self::check_whitespace(c));
         Whitespace
     }
@@ -680,28 +680,28 @@ impl <'a> Lexer<'a>{
                     self.next_char();
                     base = Base::Binary;
                     if !self.handle_decimal() {
-                        Int { base: base, empty_int: true };
+                        Int { base, empty_int: true };
                     }
                 },
                 'o' => {
                     self.next_char();
                     base = Base::Octal;
                     if !self.handle_decimal() {
-                        Int { base: base, empty_int: true };
+                        Int { base, empty_int: true };
                     }
                 },
                 'x' => {
                     self.next_char();
                     base = Base::Hexadecimal;
                     if !self.handle_hex() {
-                        Int { base: base, empty_int: true };
+                        Int { base, empty_int: true };
                     }
                 },
                 '0'..='9' | '_' => {
                     self.handle_decimal();
-                    Int { base: base, empty_int: false };
+                    Int { base, empty_int: false };
                 }
-                _ => return Int { base: base, empty_int: false },
+                _ => return Int { base, empty_int: false },
             }
         } else {
             self.handle_decimal();
@@ -713,18 +713,18 @@ impl <'a> Lexer<'a>{
             self.next_char();
             self.handle_decimal();
 
-            match self.first_char() {
+            return match self.first_char() {
                 // Handle scientific notation numbers.
                 'e' | 'E' => {
                     self.next_char();
                     empty_expo = self.handle_float();
-                    return Float { base: base, empty_exponent: empty_expo };
+                    Float { base, empty_exponent: empty_expo }
                 }
-                _ => return Float { base: base, empty_exponent: false }
+                _ => Float { base, empty_exponent: false }
             }
         }
         // Default case: return integer
-        Int { base: base, empty_int: false }
+        Int { base, empty_int: false }
     }
 
     fn handle_decimal(&mut self) -> bool{
