@@ -16,12 +16,13 @@ use crate::syntax_parser::parser::Parser;
 
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs
-    let input  = "   555s";
+    let input  = "/**/\n";
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();
     loop {
         let token = lexer.next_token();
         if token.kind == TokenType::EOF{
+            tokens.push(token);
             break;
         }
         else{

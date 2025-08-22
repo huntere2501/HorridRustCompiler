@@ -156,8 +156,9 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!: Not Getting EOF either.
-/// TODO: NEXT!!!!!!!!!!: Test Values one by one and see if they work with match statement.
+/// TODO: PRIORITY!!!!!!!: Check on how next_char is used and its purpose rather than just using move_char.
+/// TODO: NEXT!!!!!!!!!!: Block Comment is not escaping loop meant to read until
+/// ///  Blockcomment, frontmatter, numbers, identifiers, byte and c strings.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -171,13 +172,17 @@ impl <'a> Lexer<'a>{
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
         let c:char  = self.current_char();
-        if c == EOF_CHAR {
-            return Token::new(EOF, TextSpan::new(0,0,String::from(EOF_CHAR)));
-        }
         let start: usize = self.current_position;
+        if c == EOF_CHAR {
+            return Token::new(EOF, TextSpan::new(self.current_position, self.current_position, String::from(EOF_CHAR)));
+        }
         let token_type = match c {
                 c if Self::check_whitespace(c) => self.whitespace(),
-                // c if self.is_comment(&c) => self.comment(),
+                '/' => match self.first_char() {
+                    '/' => self.line_comment(),
+                    '*' => self.block_comment(),
+                    _ => Slash,
+                },
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
                 // 'b' => self.byte_string_check(),
@@ -205,7 +210,6 @@ impl <'a> Lexer<'a>{
                 '|' => Or,
                 '+' => Plus,
                 '*' => Star,
-                '/' => Slash,
                 '^' => Caret,
                 '%' => Percent,
                 _ => Unknown
@@ -213,9 +217,9 @@ impl <'a> Lexer<'a>{
 
             // TODO After receiving TokenType need to input string to get literal and span with token.
             self.move_chars(1);
-            let end:usize = self.current_position;
-            let literal:String = self.input[start..end].to_string();
-            let span:TextSpan = TextSpan::new(start, end, literal);
+            let end: usize = self.current_position;
+            let literal: String = self.input[start..end].to_string();
+            let span: TextSpan = TextSpan::new(start, end, literal);
             Token::new(token_type, span)
         }
 
@@ -229,13 +233,12 @@ impl <'a> Lexer<'a>{
     fn next_char(&mut self) -> char {
         let c = self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
         self.prev_character = c;
-        self.current_position + 1;
         c
     }
 
     /// Checks the previous character with clone as to not consume characters.
     fn prev_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position-1).unwrap_or(EOF_CHAR)
+        self.prev_character
     }
 
     /// Move up input a certain number of characters.
@@ -276,8 +279,8 @@ impl <'a> Lexer<'a>{
 
     /// Reads each character until we hit a character we don't want to consume.
     fn consume_until(&mut self, c: char) {
-        while c != self.first_char() && c != EOF_CHAR {
-            self.next_char();
+        while c != self.current_char() && c != EOF_CHAR {
+            self.move_chars(1);
         }
     }
 
@@ -329,7 +332,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn line_comment(&mut self) -> TokenType {
-        if self.current_char() == '/' && self.first_char() == '/' {
+        if self.prev_char() == '/' && self.first_char() == '/' {
             self.next_char();
         }
         let check_doc:Option<DocStyle> = match self.first_char() {
@@ -337,12 +340,12 @@ impl <'a> Lexer<'a>{
             '/' if self.second_char() != '/' => Some(DocStyle::Outer),
            _ => None,
         };
-        self.consume_until('\n');
+        self.consume_until('\u{000A}');
         LineComment { doc_style: check_doc,}
     }
 
     fn block_comment(&mut self) -> TokenType{
-        if self.current_char() == '/' && self.first_char() == '*' {
+        if self.prev_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
         let check_doc:Option<DocStyle> = match self.first_char() {
@@ -351,7 +354,7 @@ impl <'a> Lexer<'a>{
             _ => None,
         };
         // Read until count is zero == block comment is finished.
-        let mut count:usize = 1usize;
+        let mut count: usize = 1usize;
         while let Some(c) = Some(self.next_char()){
             match c {
                 '/' if self.first_char() == '*' => {
@@ -365,7 +368,7 @@ impl <'a> Lexer<'a>{
             }
         }
 
-        self.consume_until('\n');
+        self.consume_until('\u{000A}');
         BlockComment { doc_style: check_doc, terminated: false }
     }
     /// Used to check and remove metadata at the beginning of certain rust files.
