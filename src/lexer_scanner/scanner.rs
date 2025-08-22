@@ -151,11 +151,12 @@ impl Token {
 pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
+    prev_character: char,
 }
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!: Whitespace checks are not working properly.
+/// TODO: PRIORITY!!!!!!: Not Getting EOF either.
 /// TODO: NEXT!!!!!!!!!!: Test Values one by one and see if they work with match statement.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -163,7 +164,7 @@ pub(crate) struct Lexer<'a> {
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
     pub fn new(input: &'a str) -> Self {
-        Self {input, current_position: 0}
+        Self {input, current_position: 0, prev_character: EOF_CHAR}
     }
     /// Will read through each character in an input string and match the value to a token type.
     pub fn next_token(&mut self) -> Token{
@@ -219,15 +220,17 @@ impl <'a> Lexer<'a>{
         }
 
     /// For checking single character values.
-    /// Using clone copies an iterator which means the value is not consumed until we want to consume it.
-    /// Only current_char gets consumes, second and third_char are used for checks.
+    /// Grabs the current character.
     fn current_char(&mut self) -> char {
         self.input.chars().nth(self.current_position).unwrap_or(EOF_CHAR)
     }
 
     /// Move to next character and consume the current one.
     fn next_char(&mut self) -> char {
-        self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR)
+        let c = self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
+        self.prev_character = c;
+        self.current_position + 1;
+        c
     }
 
     /// Checks the previous character with clone as to not consume characters.
@@ -239,14 +242,9 @@ impl <'a> Lexer<'a>{
     fn next_while(&mut self, count: usize) {
         let mut i = 0;
         while i < count{
-            self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
+            self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
             i += 1;
         }
-    }
-
-    /// Check current character, but use clone() so item doesn't get consumed.
-    fn check_curr_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position).unwrap_or(EOF_CHAR)
     }
 
     /// Check next character, but use clone() so item doesn't get consumed.
@@ -254,12 +252,12 @@ impl <'a> Lexer<'a>{
         self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR)
     }
 
-    /// Check second character, but use clone() so item doesn't get consumed.
+    /// Check two characters ahead, but use clone() so item doesn't get consumed.
     fn second_char(&self) -> char {
         self.input.clone().chars().nth(self.current_position+2).unwrap_or(EOF_CHAR)
     }
 
-    /// Check third character, but use clone() so item doesn't get consumed.
+    /// Check three characters ahead, but use clone() so item doesn't get consumed.
     fn third_char(&self) -> char {
         self.input.clone().chars().nth(self.current_position+3).unwrap_or(EOF_CHAR)
     }
@@ -283,11 +281,10 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    // TODO Need to update consume_while to handle multiple functions.
     /// Consumes while character value is equal to what is provided.
-    fn consume_while(&mut self, mut c:  impl FnMut(char) -> bool) {
-        while c(self.current_char()) && !c(EOF_CHAR) {
-           self.next_char();
+    fn consume_while(&mut self, mut func:  impl FnMut(char) -> bool) {
+        while func(self.first_char()) && !self.input.is_empty() {
+           self.move_chars(1);
         }
     }
 
@@ -327,13 +324,12 @@ impl <'a> Lexer<'a>{
 
     ///TODO: This is not processing whitespace correctly!
     fn whitespace(&mut self) -> TokenType{
-        // Probably issues with the consume_while function.
         self.consume_while(|c:char| Self::check_whitespace(c));
         Whitespace
     }
 
     fn line_comment(&mut self) -> TokenType {
-        if self.check_curr_char() == '/' && self.first_char() == '/' {
+        if self.current_char() == '/' && self.first_char() == '/' {
             self.next_char();
         }
         let check_doc:Option<DocStyle> = match self.first_char() {
@@ -346,7 +342,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn block_comment(&mut self) -> TokenType{
-        if self.check_curr_char() == '/' && self.first_char() == '*' {
+        if self.current_char() == '/' && self.first_char() == '*' {
             self.next_char();
         }
         let check_doc:Option<DocStyle> = match self.first_char() {
