@@ -156,9 +156,9 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Check on how next_char is used and its purpose rather than just using move_char.
-/// TODO: NEXT!!!!!!!!!!: Block Comment is not escaping loop meant to read until
-/// ///  Blockcomment, frontmatter, numbers, identifiers, byte and c strings.
+/// TODO: PRIORITY!!!!!!!: Need to think about how I am breaking down numbers into usable tokens, not just LiteralKind's
+/// TODO: NEXT!!!!!!!!!!: Seperate out number logic into specific tokens.
+/// /// numbers, identifiers, byte and c strings.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -183,6 +183,12 @@ impl <'a> Lexer<'a>{
                     '*' => self.block_comment(),
                     _ => Slash,
                 },
+                /// WILL NEED TO CHANGE LATER FOR HANDLING OPERATORS!!!
+                '-' => match self.first_char(){
+                    '-' => self.frontmatter(),
+                    _ => Minus
+                },
+                '5' => Literal { kind: Float, suffix_start: self.current_position as u32 },
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
                 // 'b' => self.byte_string_check(),
@@ -205,7 +211,6 @@ impl <'a> Lexer<'a>{
                 '!' => Bang,
                 '<' => Lt,
                 '>' => Gt,
-                '-' => Minus,
                 '&' => And,
                 '|' => Or,
                 '+' => Plus,
@@ -373,12 +378,13 @@ impl <'a> Lexer<'a>{
     }
     /// Used to check and remove metadata at the beginning of certain rust files.
     /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
+    /// TODO: IS INPUT THE RIGHT THING TO GIVE TO POSITION OR OPENING?????
     fn frontmatter(&mut self) -> TokenType{
-        debug_assert_eq!('-', self.prev_char());
+        debug_assert_eq!('-', self.current_char());
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
-        let position:usize = self.input.len();
+        let position:usize = self.current_position;
         self.consume_while(|c:char| c == '-');
-        let opening:usize = self.input.chars().count() - position + 1;
+        let opening:usize = self.current_position - position + 1;
         debug_assert!(opening >= 3);
 
         // Read until we hit a '-' then check if we have found the final delimiter.
