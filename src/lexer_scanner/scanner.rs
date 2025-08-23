@@ -355,7 +355,7 @@ impl <'a> Lexer<'a>{
         };
         // Read until count is zero == block comment is finished.
         let mut count: usize = 1usize;
-        while let Some(c) = Some(self.next_char()){
+        while let Some(c) = Some(self.current_char()){
             match c {
                 '/' if self.first_char() == '*' => {
                     self.next_char();
