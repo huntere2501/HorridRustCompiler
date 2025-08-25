@@ -16,7 +16,7 @@ use crate::syntax_parser::parser::Parser;
 
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs
-    let input  = "-";
+    let input  = "4AF";
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();
     loop {

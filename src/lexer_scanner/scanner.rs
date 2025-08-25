@@ -80,6 +80,20 @@ pub(crate) enum TokenType {
         kind: LiteralKind,
         suffix_start: u32,
     },
+    CharLiteral,
+    StringLiteral,
+    RawStringLiteral,
+    ByteLiteral,
+    ByteStringLiteral,
+    RawByteLiteral,
+    IntegerLiteral{
+        base: Base,
+        empty_int: bool
+    },
+    FloatLiteral{
+        base: Base,
+        empty_exponent: bool
+    },
     Lifetime {
         starts_with_number: bool,
     },
@@ -159,8 +173,10 @@ pub(crate) struct Lexer<'a> {
 /// TODO: PRIORITY!!!!!!!: Need to think about how I am breaking down numbers into usable tokens, not just LiteralKind's
 /// TODO: NEXT!!!!!!!!!!: Seperate out number logic into specific tokens.
 /// /// numbers, identifiers, byte and c strings.
+/// TODO: Eventually remove literal token and seperate out literalkinds into specific tokens.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
+/// TODO: Work on removing or fixing the current/other_char functions.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -188,7 +204,7 @@ impl <'a> Lexer<'a>{
                     '-' => self.frontmatter(),
                     _ => Minus
                 },
-                '5' => Literal { kind: Float, suffix_start: self.current_position as u32 },
+                '0'..='9' => self.handle_number(c),
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
                 // 'b' => self.byte_string_check(),
@@ -378,7 +394,6 @@ impl <'a> Lexer<'a>{
     }
     /// Used to check and remove metadata at the beginning of certain rust files.
     /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
-    /// TODO: IS INPUT THE RIGHT THING TO GIVE TO POSITION OR OPENING?????
     fn frontmatter(&mut self) -> TokenType{
         debug_assert_eq!('-', self.current_char());
         // Track size of starting delims, used later to match the ending delims since the count should be the same.
@@ -674,9 +689,9 @@ impl <'a> Lexer<'a>{
 
     /// TODO Break down numbers into specific tokens rather than LiteralKind.
     /// Breaks down supplied number to discern number type and Literal type.
-    fn handle_number(&mut self, c: char) -> LiteralKind {
+    fn handle_number(&mut self, c: char) -> TokenType {
         // Check if previous value is a number between 0-9
-        debug_assert!('0' <= self.prev_char() && self.prev_char() <= '9');
+        // debug_assert!('0' <= self.prev_char() && self.prev_char() <= '9');
         let mut base = Base::Decimal;
 
         if c == '0' {
@@ -685,62 +700,62 @@ impl <'a> Lexer<'a>{
                     self.next_char();
                     base = Base::Binary;
                     if !self.handle_decimal() {
-                        Int { base, empty_int: true };
+                        IntegerLiteral { base, empty_int: true };
                     }
                 },
                 'o' => {
                     self.next_char();
                     base = Base::Octal;
                     if !self.handle_decimal() {
-                        Int { base, empty_int: true };
+                        IntegerLiteral { base, empty_int: true };
                     }
                 },
                 'x' => {
                     self.next_char();
                     base = Base::Hexadecimal;
                     if !self.handle_hex() {
-                        Int { base, empty_int: true };
+                        IntegerLiteral { base, empty_int: true };
                     }
                 },
                 '0'..='9' | '_' => {
                     self.handle_decimal();
                     Int { base, empty_int: false };
                 }
-                _ => return Int { base, empty_int: false },
+                _ => return IntegerLiteral { base, empty_int: false },
             }
         } else {
             self.handle_decimal();
         }
 
         // Check for Float Values
-        if self.second_char() == '.' && self.third_char().is_ascii_digit() {
+        if self.first_char() == '.' && self.second_char().is_ascii_digit() {
             let empty_expo:bool;
             self.next_char();
-            self.handle_decimal();
+            self.handle_float();
 
             return match self.first_char() {
                 // Handle scientific notation numbers.
                 'e' | 'E' => {
                     self.next_char();
                     empty_expo = self.handle_float();
-                    Float { base, empty_exponent: empty_expo }
+                    FloatLiteral { base, empty_exponent: empty_expo }
                 }
-                _ => Float { base, empty_exponent: false }
+                _ => FloatLiteral { base, empty_exponent: false }
             }
         }
         // Default case: return integer
-        Int { base, empty_int: false }
+        IntegerLiteral { base, empty_int: false }
     }
 
     fn handle_decimal(&mut self) -> bool{
-        let mut dec_flag:bool = false;
+        let mut dec_flag: bool = false;
         loop{
             match self.first_char(){
                 '0'..='9' => {
                     dec_flag = true;
-                    self.next_char();
+                    self.move_chars(1);
                 },
-                '_' => {self.next_char();},
+                '_' => {self.move_chars(1);},
                 _ => break,
             }
         }
@@ -748,15 +763,15 @@ impl <'a> Lexer<'a>{
     }
 
     fn handle_hex(&mut self) -> bool {
-        let mut hex_flag:bool = false;
+        let mut hex_flag: bool = false;
         loop{
             match self.first_char(){
                 // Pipe for pattern matching.
                 '0'..='9' | 'a'..='f' | 'A'..='F' => {
                     hex_flag = true;
-                    self.next_char();
+                    self.move_chars(1);
                 },
-                '_' => {self.next_char();},
+                '_' => {self.move_chars(1);},
                 _ => break,
             }
         }
@@ -764,14 +779,14 @@ impl <'a> Lexer<'a>{
     }
 
     fn handle_float(&mut self) -> bool{
-        let mut flt_flag:bool = false;
+        let mut flt_flag: bool = false;
         loop{
             match self.first_char(){
                 '0'..='9' | '.' => {
                     flt_flag = true;
-                    self.next_char();
+                    self.move_chars(1);
                 },
-                '_' => {self.next_char();},
+                '_' => {self.move_chars(1);},
                 _ => break,
             }
         }
