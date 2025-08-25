@@ -6,7 +6,6 @@ Much like the official rust compiler, the point of this Lexer is to break down R
 */
 use TokenType::*;
 use crate::lexer_scanner::scanner:: Whitespace;
-use crate::lexer_scanner::scanner::LiteralKind::{Float, Int};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
@@ -80,11 +79,15 @@ pub(crate) enum TokenType {
         kind: LiteralKind,
         suffix_start: u32,
     },
-    CharLiteral,
+    CharLiteral{
+        terminated: bool
+    },
     StringLiteral,
     RawStringLiteral,
     ByteLiteral,
-    ByteStringLiteral,
+    ByteStringLiteral{
+        terminated: bool
+    },
     RawByteLiteral,
     IntegerLiteral{
         base: Base,
@@ -172,7 +175,7 @@ pub(crate) struct Lexer<'a> {
 /// Multiple TODOs
 /// TODO: PRIORITY!!!!!!!: Need to think about how I am breaking down numbers into usable tokens, not just LiteralKind's
 /// TODO: NEXT!!!!!!!!!!: Seperate out number logic into specific tokens.
-/// /// numbers, identifiers, byte and c strings.
+/// /// identifiers, byte and c strings.
 /// TODO: Eventually remove literal token and seperate out literalkinds into specific tokens.
 /// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -522,9 +525,9 @@ impl <'a> Lexer<'a>{
     // fn lifetime(&mut self) -> TokenType{
     //     Lifetime
     // }
-
-    /// Check for r# symbol if raw, then check rest of value for lifetime
-    /// Raw values evaluate cha by char while ignoring escape sequences.
+    //
+    // /// Check for r# symbol if raw, then check rest of value for lifetime
+    // /// Raw values evaluate cha by char while ignoring escape sequences.
     // fn raw_lifetime(&mut self) -> TokenType{
     //     debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
     //     self.lifetime();
@@ -532,15 +535,15 @@ impl <'a> Lexer<'a>{
     // }
     //
     // /// Check the byte or c string then, call identifier checks for token types.
-    // fn c_string_check(&mut self) -> LiteralKind{
+    // fn c_string_check(&mut self) -> TokenType{
     //     debug_assert!(self.prev_char() == 'c');
-    //     LiteralKind::Char { terminated: false }
+    //     CharLiteral { terminated: false }
     // }
     //
     // /// Check the byte or c string then, call identifier checks for token types.
-    // fn byte_string_check(&mut self) -> LiteralKind{
+    // fn byte_string_check(&mut self) -> TokenType{
     //     debug_assert!(self.prev_char() == 'b');
-    //     LiteralKind::ByteStr { terminated: false }
+    //     ByteStringLiteral { terminated: false }
     // }
 
     /// Helper functions ===========================================================================
@@ -716,7 +719,7 @@ impl <'a> Lexer<'a>{
                 },
                 '0'..='9' | '_' => {
                     self.handle_decimal();
-                    Int { base, empty_int: false };
+                    IntegerLiteral { base, empty_int: false };
                 }
                 _ => return IntegerLiteral { base, empty_int: false },
             }
