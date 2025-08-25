@@ -687,31 +687,28 @@ impl <'a> Lexer<'a>{
     }
 
 
-    /// TODO Break down numbers into specific tokens rather than LiteralKind.
     /// Breaks down supplied number to discern number type and Literal type.
     fn handle_number(&mut self, c: char) -> TokenType {
-        // Check if previous value is a number between 0-9
-        // debug_assert!('0' <= self.prev_char() && self.prev_char() <= '9');
         let mut base = Base::Decimal;
 
         if c == '0' {
             match self.first_char() {
                 'b' => {
-                    self.next_char();
+                    self.move_chars(1);
                     base = Base::Binary;
-                    if !self.handle_decimal() {
+                    if !self.handle_bin() {
                         IntegerLiteral { base, empty_int: true };
                     }
                 },
                 'o' => {
-                    self.next_char();
+                    self.move_chars(1);
                     base = Base::Octal;
-                    if !self.handle_decimal() {
+                    if !self.handle_oct() {
                         IntegerLiteral { base, empty_int: true };
                     }
                 },
                 'x' => {
-                    self.next_char();
+                    self.move_chars(1);
                     base = Base::Hexadecimal;
                     if !self.handle_hex() {
                         IntegerLiteral { base, empty_int: true };
@@ -776,6 +773,38 @@ impl <'a> Lexer<'a>{
             }
         }
         hex_flag
+    }
+
+    fn handle_oct(&mut self) -> bool {
+        let mut oct_flag: bool = false;
+        loop{
+            match self.first_char(){
+                // Pipe for pattern matching.
+                '0'..='7' => {
+                    oct_flag = true;
+                    self.move_chars(1);
+                },
+                '_' => {self.move_chars(1);},
+                _ => break,
+            }
+        }
+        oct_flag
+    }
+
+    fn handle_bin(&mut self) -> bool {
+        let mut bin_flag: bool = false;
+        loop{
+            match self.first_char(){
+                // Pipe for pattern matching.S
+                '0'..='1' => {
+                    bin_flag = true;
+                    self.move_chars(1);
+                },
+                '_' => {self.move_chars(1);},
+                _ => break,
+            }
+        }
+        bin_flag
     }
 
     fn handle_float(&mut self) -> bool{
