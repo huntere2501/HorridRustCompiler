@@ -6,7 +6,6 @@ Much like the official rust compiler, the point of this Lexer is to break down R
 */
 use TokenType::*;
 use crate::lexer_scanner::scanner:: Whitespace;
-use crate::lexer_scanner::scanner::LiteralKind::Char;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
@@ -22,21 +21,6 @@ pub enum Base {
     Octal = 8,
     Decimal = 10,
     Hexadecimal = 16,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LiteralKind {
-    /// Anything terminated represents items that need to have null termination == "/0"
-    Int { base: Base, empty_int: bool },
-    Float { base: Base, empty_exponent: bool },
-    Char { terminated: bool },
-    Byte { terminated: bool },
-    Str { terminated: bool },
-    ByteStr { terminated: bool },
-    CStr { terminated: bool },
-    RawStr { n_hashes: Option<u8> },
-    RawByteStr { n_hashes: Option<u8> },
-    RawCStr { n_hashes: Option<u8> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -76,15 +60,12 @@ pub(crate) enum TokenType {
     UnknownPrefixLifetime,
     RawLifetime,
     GuardedStrPrefix,
-    Literal {
-        kind: LiteralKind,
-        suffix_start: u32,
-    },
     CharLiteral{
         terminated: bool
     },
     StringLiteral,
     RawStringLiteral,
+    CStringLiteral,
     ByteLiteral,
     ByteStringLiteral{
         terminated: bool
@@ -177,10 +158,7 @@ pub(crate) struct Lexer<'a> {
 /// TODO: PRIORITY!!!!!!!: Need to think about how I am breaking down numbers into usable tokens, not just LiteralKind's
 /// TODO: NEXT!!!!!!!!!!: Seperate out number logic into specific tokens.
 /// /// identifiers, byte and c strings.
-/// TODO: Eventually remove literal token and seperate out literalkinds into specific tokens.
-/// TODO: Spend time updating functions to work with your specific use cases.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
-/// TODO: Work on removing or fixing the current/other_char functions.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -209,12 +187,17 @@ impl <'a> Lexer<'a>{
                     _ => Minus
                 },
                 '0'..='9' => self.handle_number(c),
-                'c' => self.c_string_check(),
-                'b' => self.byte_string_check(),
-                // c if self.check_keyword() => self.keyword(),
-                // c if self.check_identifier(c) => self.identifier(),
-                // 'b' => self.byte_string_check(),
-                // 'c' => self.byte_string_check(),
+                'c' => match self.next_char(){
+                    '"' => self.c_string_check(),
+                    'r' => self.raw_c_string_check(),
+                    _ => Unknown
+                },
+                'b' => match self.next_char(){
+                    '"' => self.byte_string_check(),
+                    'r' => self.raw_byte_string_check(),
+                    _ => Unknown
+                },
+                '\'' => self.char_check(),
                 ',' => Comma,
                 '.' => Dot,
                 '(' => OpenParen,
@@ -346,7 +329,6 @@ impl <'a> Lexer<'a>{
         )
     }
 
-    ///TODO: This is not processing whitespace correctly!
     fn whitespace(&mut self) -> TokenType{
         self.consume_while(|c:char| Self::check_whitespace(c));
         Whitespace
@@ -528,35 +510,65 @@ impl <'a> Lexer<'a>{
     // }
     //
 
-    /// Check the byte or c string then, call literal checks for token types.
     /// Ex: c"\u{00E6}";
     /// Identified by c"<actualitem>"
-    fn c_string_check(&mut self) -> TokenType {
-        CharLiteral { terminated: false }
+    fn char_check(&mut self) -> TokenType {
+        if self.single_quote_string(){
+            CharLiteral {terminated: false}
+        }
+        else{
+            Unknown
+        }
         // if self.double_quote_string(){
         //     CharLiteral { terminated: false }
         // }
         // else { Unknown }
     }
 
-    /// Check the byte or c string then, call literal checks for token types.
+    /// Ex: c"\u{00E6}";
+    /// Identified by c"<actualitem>"
+    fn c_string_check(&mut self) -> TokenType {
+        CStringLiteral
+        // if self.double_quote_string(){
+        //     CharLiteral { terminated: false }
+        // }
+        // else { Unknown }
+    }
+
+    /// Ex: cr#"\u{00E6}";
+    /// Identified by cr#"<actualitem>"
+    fn raw_c_string_check(&mut self) -> TokenType {
+        RawStringLiteral
+        // if self.double_quote_string(){
+        //     CharLiteral { terminated: false }
+        // }
+        // else { Unknown }
+    }
+
+    /// /// Ex: b"\u{00E6}";
+    /// Identified by b"<actualitem>"
     fn byte_string_check(&mut self) -> TokenType{
         ByteStringLiteral { terminated: false }
     }
 
+    /// Ex: br#"\u{00E6}";
+    /// Identified by br#"<actualitem>"
+    fn raw_byte_string_check(&mut self) -> TokenType{
+        RawByteLiteral
+    }
+
     /// Helper functions ===========================================================================
 
-    /// Check if a string should just a single character
+    /// Check if a string is just a single character
     fn single_quote_string(&mut self) -> bool{
         if self.second_char() == '\'' && self.next_char() != '\\'{
-            self.next_char();
-            self.next_char();
+            self.move_chars(2);
             return true;
         }
         loop {
             match self.next_char(){
                 '\'' => {
-                    self.next_char();
+                    self.move_chars(1);
                     return true;
                 },
                 // Check for the beginning of a comment.
@@ -566,7 +578,7 @@ impl <'a> Lexer<'a>{
                     self.move_chars(2);
                 },
                 EOF_CHAR => break,
-                _ => {self.next_char();},
+                _ => {self.move_chars(1);},
             }
         }
         false
@@ -581,13 +593,14 @@ impl <'a> Lexer<'a>{
                 // Handle string escape sequences, read until we hit correct escape character.
                 // Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
                 '\\' if self.next_char() == '\\' || self.next_char() == '"' =>{
-                    self.next_char();
+                    self.move_chars(1);
                 }
                 _ => (),
             }
         }
         false
     }
+
     fn grd_double_quote_string(&mut self) -> Option<GuardedStr> {
         debug_assert!(self.prev_char() != '#');
         let mut start_count: u32 = 0;
