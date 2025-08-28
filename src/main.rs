@@ -1,6 +1,7 @@
 mod lexer_scanner;
 use crate::lexer_scanner::scanner::{Lexer, TokenType};
 mod syntax_parser;
+use std::fs;
 use crate::syntax_parser::Ast;
 use crate::syntax_parser::parser::Parser;
 
@@ -16,7 +17,9 @@ use crate::syntax_parser::parser::Parser;
 
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs
-    let input  = "0o07070";
+    let file_path: &str = "rust_test.rs";
+    let mut input  = "b";
+    // input = &*fs::read_to_string(file_path).unwrap_or("1".parse().unwrap());
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();
     loop {

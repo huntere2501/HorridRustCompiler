@@ -6,6 +6,7 @@ Much like the official rust compiler, the point of this Lexer is to break down R
 */
 use TokenType::*;
 use crate::lexer_scanner::scanner:: Whitespace;
+use crate::lexer_scanner::scanner::LiteralKind::Char;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
@@ -208,6 +209,8 @@ impl <'a> Lexer<'a>{
                     _ => Minus
                 },
                 '0'..='9' => self.handle_number(c),
+                'c' => self.c_string_check(),
+                'b' => self.byte_string_check(),
                 // c if self.check_keyword() => self.keyword(),
                 // c if self.check_identifier(c) => self.identifier(),
                 // 'b' => self.byte_string_check(),
@@ -497,14 +500,10 @@ impl <'a> Lexer<'a>{
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        debug_assert!(self.prev_char() == 'r' && self.first_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
-        self.next_char();
+        debug_assert!(self.current_char() == 'r' && self.first_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
+        self.move_chars(1);
         self.consume_full_identifier_or_keyword();
         RawIdentifier
-    }
-
-    fn check_literal(&mut self) -> TokenType{
-        Literal {kind: LiteralKind::Char {terminated:true}, suffix_start: 0}
     }
 
     // fn unkwn_prefix(&mut self) -> TokenType{
@@ -534,17 +533,22 @@ impl <'a> Lexer<'a>{
     //     RawLifetime
     // }
     //
-    // /// Check the byte or c string then, call identifier checks for token types.
-    // fn c_string_check(&mut self) -> TokenType{
-    //     debug_assert!(self.prev_char() == 'c');
-    //     CharLiteral { terminated: false }
-    // }
-    //
-    // /// Check the byte or c string then, call identifier checks for token types.
-    // fn byte_string_check(&mut self) -> TokenType{
-    //     debug_assert!(self.prev_char() == 'b');
-    //     ByteStringLiteral { terminated: false }
-    // }
+
+    /// Check the byte or c string then, call literal checks for token types.
+    /// Ex: c"\u{00E6}";
+    /// Identified by c"<actualitem>"
+    fn c_string_check(&mut self) -> TokenType {
+        CharLiteral { terminated: false }
+        // if self.double_quote_string(){
+        //     CharLiteral { terminated: false }
+        // }
+        // else { Unknown }
+    }
+
+    /// Check the byte or c string then, call literal checks for token types.
+    fn byte_string_check(&mut self) -> TokenType{
+        ByteStringLiteral { terminated: false }
+    }
 
     /// Helper functions ===========================================================================
 
@@ -565,8 +569,7 @@ impl <'a> Lexer<'a>{
                 '/' => break,
                 '\n' if Some(self.second_char()).is_some() => break,
                 '\\' => {
-                    self.next_char();
-                    self.next_char();
+                    self.move_chars(2);
                 },
                 EOF_CHAR => break,
                 _ => {self.next_char();},
@@ -637,9 +640,9 @@ impl <'a> Lexer<'a>{
         let start:usize = self.current_position;
         let mut possible_terminator_offset:Option<u32> = None;
 
-        while self.first_char() == '#' {
+        while self.next_char() == '#' {
             count += 1;
-            self.next_char();
+            self.move_chars(1)
         }
 
         let start_count:u32 = count;
