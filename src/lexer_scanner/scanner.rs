@@ -198,13 +198,13 @@ impl <'a> Lexer<'a>{
         }
         let token_type = match c {
                 c if Self::check_whitespace(c) => self.whitespace(),
-                '/' => match self.first_char() {
+                '/' => match self.next_char() {
                     '/' => self.line_comment(),
                     '*' => self.block_comment(),
                     _ => Slash,
                 },
                 /// WILL NEED TO CHANGE LATER FOR HANDLING OPERATORS!!!
-                '-' => match self.first_char(){
+                '-' => match self.next_char(){
                     '-' => self.frontmatter(),
                     _ => Minus
                 },
@@ -307,7 +307,7 @@ impl <'a> Lexer<'a>{
 
     /// Consumes while character value is equal to what is provided.
     fn consume_while(&mut self, mut func:  impl FnMut(char) -> bool) {
-        while func(self.first_char()) && !self.input.is_empty() {
+        while func(self.next_char()) && !self.input.is_empty() {
            self.move_chars(1);
         }
     }
@@ -353,10 +353,10 @@ impl <'a> Lexer<'a>{
     }
 
     fn line_comment(&mut self) -> TokenType {
-        if self.prev_char() == '/' && self.first_char() == '/' {
+        if self.prev_char() == '/' && self.next_char() == '/' {
             self.next_char();
         }
-        let check_doc:Option<DocStyle> = match self.first_char() {
+        let check_doc:Option<DocStyle> = match self.next_char() {
             '!' => Some(DocStyle::Inner),
             '/' if self.second_char() != '/' => Some(DocStyle::Outer),
            _ => None,
@@ -366,10 +366,10 @@ impl <'a> Lexer<'a>{
     }
 
     fn block_comment(&mut self) -> TokenType{
-        if self.prev_char() == '/' && self.first_char() == '*' {
+        if self.prev_char() == '/' && self.next_char() == '*' {
             self.next_char();
         }
-        let check_doc:Option<DocStyle> = match self.first_char() {
+        let check_doc:Option<DocStyle> = match self.next_char() {
             '!' => Some(DocStyle::Inner),
             '*' if self.second_char() != '*' => Some(DocStyle::Outer),
             _ => None,
@@ -378,7 +378,7 @@ impl <'a> Lexer<'a>{
         let mut count: usize = 1usize;
         while let Some(c) = Some(self.current_char()){
             match c {
-                '/' if self.first_char() == '*' => {
+                '/' if self.next_char() == '*' => {
                     self.next_char();
                     count -= 1;
                     if count == 0{
@@ -405,12 +405,12 @@ impl <'a> Lexer<'a>{
         // Read until we hit a '-' then check if we have found the final delimiter.
         self.consume_while(|c:char| c != '\n' && Self::check_whitespace(c));
 
-        if unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
+        if unicode_xid::UnicodeXID::is_xid_start(self.next_char()){
             self.next_char();
             self.consume_while(|c:char| unicode_xid::UnicodeXID::is_xid_continue(c) || c == '.');
         }
         self.consume_while(|c:char| c != '\n' && Self::check_whitespace(c));
-        self.first_char() != '\n';
+        self.next_char() != '\n';
         let mut s: &str = self.input;
         let mut found:bool = false;
         let mut size:i32 = 0;
@@ -467,7 +467,7 @@ impl <'a> Lexer<'a>{
     /// Will be used in all identifier calls.
     /// Checks the first value and subsequent values for if they match the identifier.
     fn consume_full_identifier_or_keyword(&mut self){
-        if !unicode_xid::UnicodeXID::is_xid_start(self.first_char()){
+        if !unicode_xid::UnicodeXID::is_xid_start(self.next_char()){
             return
         }
         else{
@@ -478,7 +478,7 @@ impl <'a> Lexer<'a>{
     }
 
     fn identifier_or_keyword(&mut self) -> TokenType{
-        debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.first_char()));
+        debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.next_char()));
         self.consume_full_identifier_or_keyword();
         IdentifierOrKeyword
     }
@@ -494,7 +494,7 @@ impl <'a> Lexer<'a>{
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        debug_assert!(self.current_char() == 'r' && self.first_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
+        debug_assert!(self.current_char() == 'r' && self.next_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
         self.move_chars(1);
         self.consume_full_identifier_or_keyword();
         RawIdentifier
@@ -522,7 +522,7 @@ impl <'a> Lexer<'a>{
     // /// Check for r# symbol if raw, then check rest of value for lifetime
     // /// Raw values evaluate cha by char while ignoring escape sequences.
     // fn raw_lifetime(&mut self) -> TokenType{
-    //     debug_assert!(self.prev_char() == 'r' && self.first_char() == '#');
+    //     debug_assert!(self.prev_char() == 'r' && self.next_char() == '#');
     //     self.lifetime();
     //     RawLifetime
     // }
@@ -548,13 +548,13 @@ impl <'a> Lexer<'a>{
 
     /// Check if a string should just a single character
     fn single_quote_string(&mut self) -> bool{
-        if self.second_char() == '\'' && self.first_char() != '\\'{
+        if self.second_char() == '\'' && self.next_char() != '\\'{
             self.next_char();
             self.next_char();
             return true;
         }
         loop {
-            match self.first_char(){
+            match self.next_char(){
                 '\'' => {
                     self.next_char();
                     return true;
@@ -580,7 +580,7 @@ impl <'a> Lexer<'a>{
                 '"' => {return true},
                 // Handle string escape sequences, read until we hit correct escape character.
                 // Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
-                '\\' if self.first_char() == '\\' || self.first_char() == '"' =>{
+                '\\' if self.next_char() == '\\' || self.next_char() == '"' =>{
                     self.next_char();
                 }
                 _ => (),
@@ -591,11 +591,11 @@ impl <'a> Lexer<'a>{
     fn grd_double_quote_string(&mut self) -> Option<GuardedStr> {
         debug_assert!(self.prev_char() != '#');
         let mut start_count: u32 = 0;
-        while self.first_char() == '#' {
+        while self.next_char() == '#' {
             start_count += 1;
             self.next_char();
         }
-        if self.first_char() != '"' {
+        if self.next_char() != '"' {
             return None
         }
         self.next_char();
@@ -609,7 +609,7 @@ impl <'a> Lexer<'a>{
         }
 
         let mut end_count = 0;
-        while self.first_char() == '#' && end_count < start_count {
+        while self.next_char() == '#' && end_count < start_count {
             end_count += 1;
             self.next_char();
         }
@@ -662,7 +662,7 @@ impl <'a> Lexer<'a>{
 
             self.next_char();
             let mut end_count = 0;
-            while self.first_char() == '#' && end_count < start_count{
+            while self.next_char() == '#' && end_count < start_count{
                 end_count += 1;
                 self.next_char();
             }
@@ -692,7 +692,7 @@ impl <'a> Lexer<'a>{
         let mut base = Base::Decimal;
 
         if c == '0' {
-            match self.first_char() {
+            match self.next_char() {
                 'b' => {
                     self.move_chars(1);
                     base = Base::Binary;
@@ -725,12 +725,12 @@ impl <'a> Lexer<'a>{
         }
 
         // Check for Float Values
-        if self.first_char() == '.' && self.second_char().is_ascii_digit() {
+        if self.next_char() == '.' && self.second_char().is_ascii_digit() {
             let empty_expo:bool;
             self.next_char();
             self.handle_float();
 
-            return match self.first_char() {
+            return match self.next_char() {
                 // Handle scientific notation numbers.
                 'e' | 'E' => {
                     self.next_char();
@@ -747,7 +747,7 @@ impl <'a> Lexer<'a>{
     fn handle_decimal(&mut self) -> bool{
         let mut dec_flag: bool = false;
         loop{
-            match self.first_char(){
+            match self.next_char(){
                 '0'..='9' => {
                     dec_flag = true;
                     self.move_chars(1);
@@ -762,7 +762,7 @@ impl <'a> Lexer<'a>{
     fn handle_hex(&mut self) -> bool {
         let mut hex_flag: bool = false;
         loop{
-            match self.first_char(){
+            match self.next_char(){
                 // Pipe for pattern matching.
                 '0'..='9' | 'a'..='f' | 'A'..='F' => {
                     hex_flag = true;
@@ -778,7 +778,7 @@ impl <'a> Lexer<'a>{
     fn handle_oct(&mut self) -> bool {
         let mut oct_flag: bool = false;
         loop{
-            match self.first_char(){
+            match self.next_char(){
                 // Pipe for pattern matching.
                 '0'..='7' => {
                     oct_flag = true;
@@ -794,7 +794,7 @@ impl <'a> Lexer<'a>{
     fn handle_bin(&mut self) -> bool {
         let mut bin_flag: bool = false;
         loop{
-            match self.first_char(){
+            match self.next_char(){
                 // Pipe for pattern matching.S
                 '0'..='1' => {
                     bin_flag = true;
@@ -810,7 +810,7 @@ impl <'a> Lexer<'a>{
     fn handle_float(&mut self) -> bool{
         let mut flt_flag: bool = false;
         loop{
-            match self.first_char(){
+            match self.next_char(){
                 '0'..='9' | '.' => {
                     flt_flag = true;
                     self.move_chars(1);
