@@ -242,7 +242,6 @@ impl <'a> Lexer<'a>{
                 _ => Unknown
             };
 
-            // TODO After receiving TokenType need to input string to get literal and span with token.
             self.move_chars(1);
             let end: usize = self.current_position;
             let literal: String = self.input[start..end].to_string();
@@ -275,11 +274,6 @@ impl <'a> Lexer<'a>{
             self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
             i += 1;
         }
-    }
-
-    /// Check next character, but use clone() so item doesn't get consumed.
-    fn first_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR)
     }
 
     /// Check two characters ahead, but use clone() so item doesn't get consumed.
