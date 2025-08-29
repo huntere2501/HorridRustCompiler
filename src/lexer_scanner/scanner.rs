@@ -155,8 +155,8 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: String Literal is not being read properly. Either func is issue or input.
-/// TODO: NEXT!!!!!!!!!!: Handle all char/string literal types.
+/// TODO: PRIORITY!!!!!!!: Handle all char/string literal types.
+/// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
 /// /// identifiers, byte and c strings.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -533,28 +533,37 @@ impl <'a> Lexer<'a>{
 
     /// Ex: c"\u{00E6}";
     /// Identified by c"<actualitem>"
+    /// NEED TO HANDLE cr# strings
     fn c_string_check(&mut self) -> TokenType {
-        CStringLiteral
-        // if self.double_quote_string(){
-        //     CharLiteral { terminated: false }
-        // }
-        // else { Unknown }
+        self.move_chars(1);
+        if self.double_quote_string(){
+            CStringLiteral
+        }
+        else{
+            Unknown
+        }
     }
 
     /// Ex: cr#"\u{00E6}";
-    /// Identified by cr#"<actualitem>"
     fn raw_c_string_check(&mut self) -> TokenType {
-        RawStringLiteral
-        // if self.double_quote_string(){
-        //     CharLiteral { terminated: false }
-        // }
-        // else { Unknown }
+        if self.double_quote_string(){
+            RawStringLiteral
+        }
+        else{
+            Unknown
+        }
     }
 
     /// /// Ex: b"\u{00E6}";
     /// Identified by b"<actualitem>"
     fn byte_string_check(&mut self) -> TokenType{
-        ByteStringLiteral { terminated: false }
+        self.move_chars(1);
+        if self.double_quote_string(){
+            ByteStringLiteral { terminated: false }
+        }
+        else{
+            Unknown
+        }
     }
 
     /// Ex: br#"\u{00E6}";
