@@ -155,8 +155,8 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Need to think about how I am breaking down numbers into usable tokens, not just LiteralKind's
-/// TODO: NEXT!!!!!!!!!!: Seperate out number logic into specific tokens.
+/// TODO: PRIORITY!!!!!!!: String Literal is not being read properly. Either func is issue or input.
+/// TODO: NEXT!!!!!!!!!!: Handle all char/string literal types.
 /// /// identifiers, byte and c strings.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -198,6 +198,7 @@ impl <'a> Lexer<'a>{
                     _ => Unknown
                 },
                 '\'' => self.char_check(),
+                '"' => self.string_check(),
                 ',' => Comma,
                 '.' => Dot,
                 '(' => OpenParen,
@@ -519,10 +520,15 @@ impl <'a> Lexer<'a>{
         else{
             Unknown
         }
-        // if self.double_quote_string(){
-        //     CharLiteral { terminated: false }
-        // }
-        // else { Unknown }
+    }
+
+    fn string_check(&mut self) -> TokenType{
+        if self.double_quote_string(){
+            StringLiteral
+        }
+        else{
+            Unknown
+        }
     }
 
     /// Ex: c"\u{00E6}";
@@ -587,15 +593,21 @@ impl <'a> Lexer<'a>{
     /// Check if a string matches the String or &str type.
     /// Used for other token type checks (literals, keywords, etc.)
     fn double_quote_string(&mut self) -> bool{
-        while let Some(c) = Some(self.next_char()){
-            match c{
-                '"' => {return true},
+        loop{
+            match self.next_char(){
+                '"' => {
+                    self.move_chars(1);
+                    return true
+                },
                 // Handle string escape sequences, read until we hit correct escape character.
                 // Since \"Hello\\World\"" for example is a valid string, we want to stop at the correct '"'.
                 '\\' if self.next_char() == '\\' || self.next_char() == '"' =>{
                     self.move_chars(1);
                 }
-                _ => (),
+                '/' => break,
+                '\n' if Some(self.second_char()).is_some() => break,
+                EOF_CHAR => break,
+                _ => {self.move_chars(1)},
             }
         }
         false
