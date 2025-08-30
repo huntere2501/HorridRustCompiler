@@ -110,6 +110,7 @@ pub(crate) enum TokenType {
     Caret,
     Percent,
     Unknown,
+    Error,
     EOF,
 }
 
@@ -197,6 +198,7 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(),
                     _ => Unknown
                 },
+                'r' => self.raw_double_quote_string(1),
                 '\'' => self.char_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -255,19 +257,19 @@ impl <'a> Lexer<'a>{
     fn next_while(&mut self, count: usize) {
         let mut i = 0;
         while i < count{
-            self.input.clone().chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
+            self.input.chars().nth(self.current_position+1).unwrap_or(EOF_CHAR);
             i += 1;
         }
     }
 
     /// Check two characters ahead, but use clone() so item doesn't get consumed.
     fn second_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+2).unwrap_or(EOF_CHAR)
+        self.input.chars().nth(self.current_position+2).unwrap_or(EOF_CHAR)
     }
 
     /// Check three characters ahead, but use clone() so item doesn't get consumed.
     fn third_char(&self) -> char {
-        self.input.clone().chars().nth(self.current_position+3).unwrap_or(EOF_CHAR)
+        self.input.chars().nth(self.current_position+3).unwrap_or(EOF_CHAR)
     }
 
     /// Move a specified number of characters.
@@ -546,7 +548,7 @@ impl <'a> Lexer<'a>{
 
     /// Ex: cr#"\u{00E6}";
     fn raw_c_string_check(&mut self) -> TokenType {
-        if self.double_quote_string(){
+        if self.check_raw_string(0) == Ok(0) {
             RawStringLiteral
         }
         else{
@@ -569,7 +571,12 @@ impl <'a> Lexer<'a>{
     /// Ex: br#"\u{00E6}";
     /// Identified by br#"<actualitem>"
     fn raw_byte_string_check(&mut self) -> TokenType{
-        RawByteLiteral
+        if self.check_raw_string(0) == Ok(0) {
+            RawByteLiteral
+        }
+        else{
+            Unknown
+        }
     }
 
     /// Helper functions ===========================================================================
@@ -622,6 +629,8 @@ impl <'a> Lexer<'a>{
         false
     }
 
+    /// In Rust, "guarded strings" refers to strings with a special syntax, #...#,
+    /// that were reserved for future language or library features, not a standard string type.
     fn grd_double_quote_string(&mut self) -> Option<GuardedStr> {
         debug_assert!(self.prev_char() != '#');
         let mut start_count: u32 = 0;
@@ -662,7 +671,7 @@ impl <'a> Lexer<'a>{
         // Program will read through string char by char.
         // A count of the amount of # will be processed. These will be used to verify that they are the correct number of hashes.
         // If # numbers don't match then we error out since we don't have a valid raw string.
-        debug_assert!(self.prev_char() == 'r');
+        debug_assert!(self.current_char() == 'r');
         let mut count: u32 = 0;
         let mut max_count:u32 = 0;
         let start:usize = self.current_position;
@@ -694,11 +703,11 @@ impl <'a> Lexer<'a>{
                 });
             }
 
-            self.next_char();
+            self.move_chars(1);
             let mut end_count = 0;
             while self.next_char() == '#' && end_count < start_count{
                 end_count += 1;
-                self.next_char();
+                self.move_chars(1);
             }
 
             if start_count == end_count{
@@ -712,11 +721,12 @@ impl <'a> Lexer<'a>{
     }
 
     // Cant simply call string function since raw strings ignore escape characters.
-    fn raw_double_string(&mut self, len: u32) -> Result<u32, RawStrError> {
-        let hash_count:u32 = self.check_raw_string(len)?;
-        match u8::try_from(hash_count){
-            Ok(num) => Ok(num as u32),
-            Err(_) => Err(RawStrError::TooManyDelimiters {found: 1}),
+    fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
+        if self.check_raw_string(len) == Ok(len){
+            RawStringLiteral
+        }
+        else{
+            Unknown
         }
     }
 
