@@ -198,7 +198,7 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(),
                     _ => Unknown
                 },
-                'r' => self.raw_double_quote_string(1),
+                'r' => self.raw_double_quote_string(self.input.len() as u32),
                 '\'' => self.char_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -671,7 +671,6 @@ impl <'a> Lexer<'a>{
         // Program will read through string char by char.
         // A count of the amount of # will be processed. These will be used to verify that they are the correct number of hashes.
         // If # numbers don't match then we error out since we don't have a valid raw string.
-        debug_assert!(self.current_char() == 'r');
         let mut count: u32 = 0;
         let mut max_count:u32 = 0;
         let start:usize = self.current_position;
@@ -681,20 +680,18 @@ impl <'a> Lexer<'a>{
             count += 1;
             self.move_chars(1)
         }
-
         let start_count:u32 = count;
 
         match self.next_char(){
             '"' => (),
             c => {
-                let c_option:Option<char> = Some(c);
-                let c = c_option.unwrap_or(EOF_CHAR);
                 return Err(RawStrError::InvalidStarter { bad_char: c });
             }
         }
 
         loop {
-            self.consume_until(char::from(b'"'));
+            self.consume_until(char::from('"'));
+            self.move_chars(1);
             if self.current_char() == EOF_CHAR {
                 return Err(RawStrError::NoTerminator {
                     expected: start_count,
@@ -702,7 +699,6 @@ impl <'a> Lexer<'a>{
                     possible_terminator_offset,
                 });
             }
-
             self.move_chars(1);
             let mut end_count = 0;
             while self.next_char() == '#' && end_count < start_count{
@@ -711,11 +707,12 @@ impl <'a> Lexer<'a>{
             }
 
             if start_count == end_count{
-                println!("Successful!");
+                return Ok(len);
             }
             else {
                 possible_terminator_offset = Some(self.current_position as u32 - start as u32 - end_count + len);
                 max_count = end_count;
+
             }
         }
     }
