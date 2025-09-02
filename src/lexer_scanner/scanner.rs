@@ -156,9 +156,9 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Fix raw string check to handle as many characters as possible.
+/// TODO: PRIORITY!!!!!!!: Identifiers
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
-/// /// identifiers, byte and c strings.
+/// /// identifiers, lifetimes.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -190,15 +190,16 @@ impl <'a> Lexer<'a>{
                 '0'..='9' => self.handle_number(c),
                 'c' => match self.next_char(){
                     '"' => self.c_string_check(),
-                    'r' => self.raw_c_string_check(),
+                    'r' => self.raw_c_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
                 'b' => match self.next_char(){
                     '"' => self.byte_string_check(),
-                    'r' => self.raw_byte_string_check(),
+                    'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
                 'r' => self.raw_double_quote_string(self.input.len() as u32),
+                // 'a'..='z' => self.identifier_or_keyword(),
                 '\'' => self.char_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -548,8 +549,9 @@ impl <'a> Lexer<'a>{
     }
 
     /// Ex: cr#"\u{00E6}";
-    fn raw_c_string_check(&mut self) -> TokenType {
-        if self.check_raw_string(0) == Ok(0) {
+    fn raw_c_string_check(&mut self, len: u32) -> TokenType {
+        self.move_chars(1);
+        if self.check_raw_string(len) == Ok(len) {
             RawStringLiteral
         }
         else{
@@ -571,9 +573,20 @@ impl <'a> Lexer<'a>{
 
     /// Ex: br#"\u{00E6}";
     /// Identified by br#"<actualitem>"
-    fn raw_byte_string_check(&mut self) -> TokenType{
-        if self.check_raw_string(0) == Ok(0) {
+    fn raw_byte_string_check(&mut self, len: u32) -> TokenType{
+        self.move_chars(1);
+        if self.check_raw_string(len) == Ok(len) {
             RawByteLiteral
+        }
+        else{
+            Unknown
+        }
+    }
+
+    // Cant simply call string function since raw strings ignore escape characters.
+    fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
+        if self.check_raw_string(len) == Ok(len){
+            RawStringLiteral
         }
         else{
             Unknown
@@ -713,16 +726,6 @@ impl <'a> Lexer<'a>{
 
             }
             self.move_chars(1);
-        }
-    }
-
-    // Cant simply call string function since raw strings ignore escape characters.
-    fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
-        if self.check_raw_string(len) == Ok(len){
-            RawStringLiteral
-        }
-        else{
-            Unknown
         }
     }
 
