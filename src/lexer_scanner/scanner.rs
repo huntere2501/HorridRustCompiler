@@ -53,9 +53,10 @@ pub(crate) enum TokenType {
         has_invalid_preceding_whitespace: bool,
         invalid_infostring: bool,
     },
-    IdentifierOrKeyword,
+    Identifier,
     RawIdentifier,
     InvalidIdentifier,
+    Keyword,
     UnknownPrefix,
     UnknownPrefixLifetime,
     RawLifetime,
@@ -182,7 +183,6 @@ impl <'a> Lexer<'a>{
                     '*' => self.block_comment(),
                     _ => Slash,
                 },
-                /// WILL NEED TO CHANGE LATER FOR HANDLING OPERATORS!!!
                 '-' => match self.next_char(){
                     '-' => self.frontmatter(),
                     _ => Minus
@@ -199,7 +199,7 @@ impl <'a> Lexer<'a>{
                     _ => Unknown
                 },
                 'r' => self.raw_double_quote_string(self.input.len() as u32),
-                // 'a'..='z' => self.identifier_or_keyword(),
+                'a'..='z' => self.identifier_or_keyword(),
                 '\'' => self.char_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -296,7 +296,7 @@ impl <'a> Lexer<'a>{
     /// Consumes while character value is equal to what is provided.
     fn consume_while(&mut self, mut func:  impl FnMut(char) -> bool) {
         while func(self.next_char()) && !self.input.is_empty() {
-           self.move_chars(1);
+            self.move_chars(1);
         }
     }
 
@@ -458,24 +458,19 @@ impl <'a> Lexer<'a>{
             return
         }
         else{
-            self.consume_while(|c: char| {
-                unicode_xid::UnicodeXID::is_xid_continue(c) || c.is_ascii()
-            });
+            self.consume_while(|c: char| {unicode_xid::UnicodeXID::is_xid_continue(c) && c.is_ascii()});
         }
     }
 
     fn identifier_or_keyword(&mut self) -> TokenType{
-        debug_assert!(unicode_xid::UnicodeXID::is_xid_start(self.next_char()));
         self.consume_full_identifier_or_keyword();
-        IdentifierOrKeyword
+        Identifier
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
     /// Ex: let 8run =...... digits shouldn't start variable names.
     fn invalid_identifier_or_keyword(&mut self) -> TokenType {
-        self.consume_while(|c: char| {
-            unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER
-        });
+        self.consume_while(|c: char| {unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER});
         InvalidIdentifier
     }
 
