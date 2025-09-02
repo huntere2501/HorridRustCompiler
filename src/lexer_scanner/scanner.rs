@@ -156,7 +156,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Handle all char/string literal types.
+/// TODO: PRIORITY!!!!!!!: Fix raw string check to handle as many characters as possible.
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
 /// /// identifiers, byte and c strings.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -289,6 +289,7 @@ impl <'a> Lexer<'a>{
         while c != self.current_char() && c != EOF_CHAR {
             self.move_chars(1);
         }
+        self.move_chars(1);
     }
 
     /// Consumes while character value is equal to what is provided.
@@ -673,6 +674,7 @@ impl <'a> Lexer<'a>{
         // If # numbers don't match then we error out since we don't have a valid raw string.
         let mut count: u32 = 0;
         let mut max_count:u32 = 0;
+        let mut end_count = 0;
         let start:usize = self.current_position;
         let mut possible_terminator_offset:Option<u32> = None;
 
@@ -681,7 +683,6 @@ impl <'a> Lexer<'a>{
             self.move_chars(1)
         }
         let start_count:u32 = count;
-
         match self.next_char(){
             '"' => (),
             c => {
@@ -690,8 +691,12 @@ impl <'a> Lexer<'a>{
         }
 
         loop {
-            self.consume_until(char::from('"'));
-            self.move_chars(1);
+            if self.current_char() == '"'{
+                while self.next_char() == '#' && end_count < start_count{
+                    end_count += 1;
+                    self.move_chars(1);
+                }
+            }
             if self.current_char() == EOF_CHAR {
                 return Err(RawStrError::NoTerminator {
                     expected: start_count,
@@ -699,13 +704,6 @@ impl <'a> Lexer<'a>{
                     possible_terminator_offset,
                 });
             }
-            self.move_chars(1);
-            let mut end_count = 0;
-            while self.next_char() == '#' && end_count < start_count{
-                end_count += 1;
-                self.move_chars(1);
-            }
-
             if start_count == end_count{
                 return Ok(len);
             }
@@ -714,6 +712,7 @@ impl <'a> Lexer<'a>{
                 max_count = end_count;
 
             }
+            self.move_chars(1);
         }
     }
 
