@@ -5,7 +5,72 @@ It will also need to work with the error_handler to call errors when they are fo
 Much like the official rust compiler, the point of this Lexer is to break down Rust's main components to make actual tokenization easier later.
 */
 use TokenType::*;
-use crate::lexer_scanner::scanner:: Whitespace;
+use crate::lexer_scanner::scanner::Whitespace;
+use std::collections::HashSet;
+use std::sync::LazyLock;
+
+static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        // Strict keywords (cannot be used as identifiers)
+        "as",
+        "async",
+        "await",
+        "break",
+        "const",
+        "continue",
+        "crate",
+        "dyn",
+        "else",
+        "enum",
+        "extern",
+        "false",
+        "fn",
+        "for",
+        "if",
+        "impl",
+        "in",
+        "let",
+        "loop",
+        "match",
+        "mod",
+        "move",
+        "mut",
+        "pub",
+        "ref",
+        "return",
+        "self",
+        "Self",
+        "static",
+        "struct",
+        "super",
+        "trait",
+        "true",
+        "type",
+        "union",
+        "unsafe",
+        "use",
+        "where",
+        "while",
+
+        // Reserved keywords (reserved for future use)
+        "abstract",
+        "become",
+        "box",
+        "do",
+        "final",
+        "macro",
+        "override",
+        "priv",
+        "typeof",
+        "unsized",
+        "virtual",
+        "yield",
+
+        // Weak keywords (contextual, but good to include for completeness)
+        "macro_rules",
+        "try",
+    ])
+});
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
@@ -13,6 +78,7 @@ pub enum DocStyle {
     Outer,
     Inner,
 }
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Base {
@@ -157,7 +223,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Identifiers
+/// TODO: PRIORITY!!!!!!!: Separate Identifier and String checker.
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
 /// /// identifiers, lifetimes.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -463,8 +529,23 @@ impl <'a> Lexer<'a>{
     }
 
     fn identifier_or_keyword(&mut self) -> TokenType{
-        self.consume_full_identifier_or_keyword();
-        Identifier
+        if 1 ==1 {
+            let mut test_string = String::new();
+            loop{
+                if Self::check_whitespace(self.current_char()){
+                    if KEYWORDS.contains(&test_string){
+                        return Keyword
+                    }
+                }
+                test_string.push(self.current_char());
+                self.move_chars(1);
+
+            }
+        }
+        else {
+            self.consume_full_identifier_or_keyword();
+            Identifier
+        }
     }
 
     /// Invalid identifiers include items that are not traditional rust identifiers
