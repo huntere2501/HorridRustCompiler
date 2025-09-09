@@ -294,7 +294,6 @@ impl <'a> Lexer<'a>{
                 '%' => Percent,
                 _ => Unknown
             };
-
             self.move_chars(1);
             let end: usize = self.current_position;
             let literal: String = self.input[start..end].to_string();
@@ -529,21 +528,16 @@ impl <'a> Lexer<'a>{
     }
 
     fn identifier_or_keyword(&mut self) -> TokenType{
-        if 1 ==1 {
-            let mut test_string = String::new();
-            loop{
-                if Self::check_whitespace(self.current_char()){
-                    if KEYWORDS.contains(&test_string){
-                        return Keyword
-                    }
-                }
-                test_string.push(self.current_char());
-                self.move_chars(1);
-
-            }
+        let mut test_string = String::new();
+        while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii(){
+            test_string.push(self.current_char());
+            println!("{:?}", self.current_char());
+            self.move_chars(1);
         }
-        else {
-            self.consume_full_identifier_or_keyword();
+        test_string.push(self.current_char());
+        if KEYWORDS.contains(&*test_string) {
+            Keyword
+        } else {
             Identifier
         }
     }
