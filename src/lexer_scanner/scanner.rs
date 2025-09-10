@@ -534,16 +534,20 @@ impl <'a> Lexer<'a>{
 
     fn identifier_or_keyword(&mut self) -> TokenType{
         let mut test_string = String::new();
+        test_string.push(self.current_char());
         while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii(){
-            test_string.push(self.current_char());
-            println!("{:?}", self.current_char());
+            test_string.push(self.next_char());
             self.move_chars(1);
         }
-        test_string.push(self.current_char());
+        println!("{:?}", self.current_char());
         if KEYWORDS.contains(&*test_string) {
             Keyword
-        } else {
+        }
+        else if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
             Identifier
+        }
+        else {
+            InvalidIdentifier
         }
     }
 
@@ -557,8 +561,15 @@ impl <'a> Lexer<'a>{
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
         self.move_chars(1);
-        self.identifier_or_keyword();
-        RawIdentifier
+        while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii(){
+            self.move_chars(1);
+        }
+        if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
+            RawIdentifier
+        }
+        else {
+            InvalidIdentifier
+        }
     }
 
     // fn unkwn_prefix(&mut self) -> TokenType{
