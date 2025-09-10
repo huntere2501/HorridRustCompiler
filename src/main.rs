@@ -18,7 +18,7 @@ use crate::syntax_parser::parser::Parser;
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs
     let file_path: &str = "rust_test.rs";
-    let mut input  = r##"htppy 8"##;
+    let mut input  = r##"r#let"##;
     // input = &*fs::read_to_string(file_path).unwrap_or("1".parse().unwrap());
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();

@@ -223,7 +223,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Separate Identifier and String checker.
+/// TODO: PRIORITY!!!!!!!: Handle invalid identifiers when items like (Ex: let8h) numbers are included.
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
 /// /// identifiers, lifetimes.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -264,8 +264,13 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
-                'r' => self.raw_double_quote_string(self.input.len() as u32),
-                'a'..='z' => self.identifier_or_keyword(),
+                // TODO: NEED TO HAVE BETTER CHECKING FOR RAW STRING STRINGS/IDENTIFIERS
+                'r' => match self.next_char(){
+                    '"' => self.raw_double_quote_string(self.input.len() as u32),
+                    '#' => self.raw_identifier(),
+                    _ => Unknown
+                },
+                c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),
                 '\'' => self.char_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -551,9 +556,8 @@ impl <'a> Lexer<'a>{
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
-        debug_assert!(self.current_char() == 'r' && self.next_char() == '#' && unicode_xid::UnicodeXID::is_xid_start(self.second_char()));
         self.move_chars(1);
-        self.consume_full_identifier_or_keyword();
+        self.identifier_or_keyword();
         RawIdentifier
     }
 
