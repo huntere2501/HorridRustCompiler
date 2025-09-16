@@ -223,9 +223,9 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Handle invalid identifiers when items like (Ex: let8h) numbers are included.
+/// TODO: PRIORITY!!!!!!!: FIX LIFETIME FUNCTION!
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
-/// /// identifiers, lifetimes.
+/// /// lifetimes, prefixes.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -264,14 +264,13 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
-                // TODO: NEED TO HAVE BETTER CHECKING FOR RAW STRING STRINGS/IDENTIFIERS
                 'r' => match self.next_char(){
                     '"' => self.raw_double_quote_string(self.input.len() as u32),
                     '#' => self.raw_identifier(),
                     _ => Unknown
                 },
                 c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),
-                '\'' => self.char_check(),
+                '\'' => self.char_and_lifetime_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
                 '.' => Dot,
@@ -365,7 +364,7 @@ impl <'a> Lexer<'a>{
 
     /// Consumes while character value is equal to what is provided.
     fn consume_while(&mut self, mut func:  impl FnMut(char) -> bool) {
-        while func(self.next_char()) && !self.input.is_empty() {
+        while func(self.next_char()) && self.next_char() != EOF_CHAR {
             self.move_chars(1);
         }
     }
@@ -551,13 +550,6 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// Invalid identifiers include items that are not traditional rust identifiers
-    /// Ex: let 8run =...... digits shouldn't start variable names.
-    fn invalid_identifier_or_keyword(&mut self) -> TokenType {
-        self.consume_while(|c: char| {unicode_xid::UnicodeXID::is_xid_continue(c) || !c.is_ascii() || c == ZERO_WIDTH_JOINER});
-        InvalidIdentifier
-    }
-
     /// Check for r# symbol if raw, then check rest of value for identifier match.
     fn raw_identifier(&mut self) -> TokenType{
         self.move_chars(1);
@@ -587,27 +579,40 @@ impl <'a> Lexer<'a>{
     //     GuardedStrPrefix
     // }
     //
-    // fn lifetime(&mut self) -> TokenType{
-    //     Lifetime
-    // }
-    //
-    // /// Check for r# symbol if raw, then check rest of value for lifetime
-    // /// Raw values evaluate cha by char while ignoring escape sequences.
-    // fn raw_lifetime(&mut self) -> TokenType{
-    //     debug_assert!(self.prev_char() == 'r' && self.next_char() == '#');
-    //     self.lifetime();
-    //     RawLifetime
-    // }
-    //
+    fn lifetime(&mut self, ) -> bool{
+        self.consume_while(|c: char| unicode_xid::UnicodeXID::is_xid_start(c));
+        if Self::check_whitespace(self.next_char()) || self.next_char() == ',' || self.next_char() == ':' ||  self.next_char() == '>' {
+            true
+        }
+        else {
+            false
+        }
+
+
+    }
+
+    /// Check for r# symbol if raw, then check rest of value for lifetime
+    /// Raw values evaluate cha by char while ignoring escape sequences.
+    fn raw_lifetime(&mut self) -> TokenType{
+        debug_assert!(self.prev_char() == 'r' && self.next_char() == '#');
+        self.lifetime();
+        RawLifetime
+    }
+
 
     /// Ex: c"\u{00E6}";
     /// Identified by c"<actualitem>"
-    fn char_check(&mut self) -> TokenType {
-        if self.single_quote_string(){
-            CharLiteral {terminated: false}
-        }
-        else{
-            Unknown
+    fn char_and_lifetime_check(&mut self) -> TokenType {
+        let saved_position = self.current_position;
+        if self.lifetime() {
+            Lifetime { starts_with_number: false }
+        } else {
+            self.current_position = saved_position;
+            if self.single_quote_string() {
+                CharLiteral { terminated: false }
+            } else {
+                Unknown
+            }
         }
     }
 
