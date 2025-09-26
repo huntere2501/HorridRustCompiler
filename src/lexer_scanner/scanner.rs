@@ -223,7 +223,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: FIX LIFETIME FUNCTION!
+/// TODO: PRIORITY!!!!!!!: RAW Lifetime function not checking properly.
 /// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
 /// /// lifetimes, prefixes.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
@@ -266,7 +266,7 @@ impl <'a> Lexer<'a>{
                 },
                 'r' => match self.next_char(){
                     '"' => self.raw_double_quote_string(self.input.len() as u32),
-                    '#' => self.raw_identifier(),
+                    '#' => self.raw_identifier_or_lifetime(),
                     _ => Unknown
                 },
                 c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),
@@ -538,7 +538,6 @@ impl <'a> Lexer<'a>{
             test_string.push(self.next_char());
             self.move_chars(1);
         }
-        println!("{:?}", self.current_char());
         if KEYWORDS.contains(&*test_string) {
             Keyword
         }
@@ -551,16 +550,22 @@ impl <'a> Lexer<'a>{
     }
 
     /// Check for r# symbol if raw, then check rest of value for identifier match.
-    fn raw_identifier(&mut self) -> TokenType{
+    fn raw_identifier_or_lifetime(&mut self) -> TokenType{
         self.move_chars(1);
-        while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii(){
-            self.move_chars(1);
-        }
-        if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
-            RawIdentifier
+        let saved_position = self.current_position;
+        if self.raw_lifetime(){
+            RawLifetime
         }
         else {
-            InvalidIdentifier
+            self.current_position = saved_position;
+            while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii() {
+                self.move_chars(1);
+            }
+            if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
+                RawIdentifier
+            } else {
+                InvalidIdentifier
+            }
         }
     }
 
@@ -587,16 +592,24 @@ impl <'a> Lexer<'a>{
         else {
             false
         }
-
-
     }
 
     /// Check for r# symbol if raw, then check rest of value for lifetime
     /// Raw values evaluate cha by char while ignoring escape sequences.
-    fn raw_lifetime(&mut self) -> TokenType{
-        debug_assert!(self.prev_char() == 'r' && self.next_char() == '#');
-        self.lifetime();
-        RawLifetime
+    fn raw_lifetime(&mut self) -> bool{
+        if self.next_char() == '\'' {
+            self.move_chars(1);
+            self.consume_while(|c: char| unicode_xid::UnicodeXID::is_xid_start(c));
+            if Self::check_whitespace(self.next_char()) || self.next_char() == ',' || self.next_char() == ':' || self.next_char() == '>' {
+                true
+            }
+            else{
+                false
+            }
+        }
+        else {
+            false
+        }
     }
 
 
