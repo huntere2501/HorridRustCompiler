@@ -262,10 +262,13 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
-                // THERE IS CROSSOVER WITH TYPES HERE!
+                /// Using multiple match statements here since the raw strings and identifiers have multiple pieces of overlap.
                 'r' => match self.next_char(){
                     '"' => self.raw_double_quote_string(self.input.len() as u32),
-                    '#' => self.raw_double_quote_string(self.input.len() as u32),
+                    '#' => match self.second_char(){
+                        '"' => self.raw_double_quote_string(self.input.len() as u32),
+                        c => self.raw_identifier_or_lifetime(),
+                    },
                     _ => Unknown
                 },
                 c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),

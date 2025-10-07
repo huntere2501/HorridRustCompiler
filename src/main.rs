@@ -20,7 +20,7 @@ fn main() {
     let file_path: &str = "rust_test.rs";
 
     /// WE ARE STOPPING AT THE F!!!!!
-    let mut input  = r###" r"foo" "###;
+    let mut input  = r###" r#foo "###;
     // input = &*fs::read_to_string(file_path).unwrap_or("1".parse().unwrap());
     let mut lexer  = Lexer::new(input);
     let mut tokens = Vec::new();
