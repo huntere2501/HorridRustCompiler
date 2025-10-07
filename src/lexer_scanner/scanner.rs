@@ -223,9 +223,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: RAW Lifetime function not checking properly.
-/// TODO: NEXT!!!!!!!!!!: Be able to read and tokenize a simple Hello World in Rust.
-/// /// lifetimes, prefixes.
+/// TODO: PRIORITY!!!!!!!: Fix pathing logic for words and identifiers.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -264,9 +262,10 @@ impl <'a> Lexer<'a>{
                     'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
                 },
+                // THERE IS CROSSOVER WITH TYPES HERE!
                 'r' => match self.next_char(){
                     '"' => self.raw_double_quote_string(self.input.len() as u32),
-                    '#' => self.raw_identifier_or_lifetime(),
+                    '#' => self.raw_double_quote_string(self.input.len() as u32),
                     _ => Unknown
                 },
                 c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),
@@ -788,29 +787,39 @@ impl <'a> Lexer<'a>{
         // Program will read through string char by char.
         // A count of the amount of # will be processed. These will be used to verify that they are the correct number of hashes.
         // If # numbers don't match then we error out since we don't have a valid raw string.
-        let mut count: u32 = 0;
+        let mut start_count: u32 = 256;
         let mut max_count:u32 = 0;
         let mut end_count = 0;
         let start:usize = self.current_position;
         let mut possible_terminator_offset:Option<u32> = None;
 
-        while self.next_char() == '#' {
-            count += 1;
-            self.move_chars(1)
+        if self.next_char() == '#' {
+            start_count = 0;
+            while self.next_char() == '#' {
+                start_count += 1;
+                self.move_chars(1);
+            }
         }
-        let start_count:u32 = count;
-        match self.next_char(){
+        self.move_chars(1);
+
+        println!("{:?}", self.current_char());
+
+        match self.current_char(){
             '"' => (),
             c => {
                 return Err(RawStrError::InvalidStarter { bad_char: c });
             }
         }
-
+        self.move_chars(1);
+        // Only ever returning OK when #'s are present.
         loop {
             if self.current_char() == '"'{
-                while self.next_char() == '#' && end_count < start_count{
+                while self.next_char() == '#' && end_count < start_count {
                     end_count += 1;
                     self.move_chars(1);
+                }
+                if Self::check_whitespace(self.next_char()) || self.next_char() == EOF_CHAR{
+                    return Ok(len);
                 }
             }
             if self.current_char() == EOF_CHAR {
