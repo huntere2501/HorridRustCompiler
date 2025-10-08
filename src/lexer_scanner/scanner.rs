@@ -223,7 +223,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Fix pathing logic for words and identifiers.
+/// TODO: PRIORITY!!!!!!!: Comment everything, check each value, fix what is needed. Check for missing items. Then test basic hello world.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -371,10 +371,13 @@ impl <'a> Lexer<'a>{
         }
     }
 
+    /// Allows for movement to a specific spot in the token.
     fn move_pos_in_token(&mut self, len:u32){
         self.current_position = len as usize;
     }
 
+
+    /// Uses ASCII codes to check if a value is equal to multiple whitespace possibilities.
     pub fn check_whitespace(c: char) -> bool {
         // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
@@ -405,11 +408,13 @@ impl <'a> Lexer<'a>{
         )
     }
 
+    /// Uses check_whitespace to consume chars until we hit a value that is not classified as whitespace.
     fn whitespace(&mut self) -> TokenType{
         self.consume_while(|c:char| Self::check_whitespace(c));
         Whitespace
     }
 
+    /// Checks for if a value is a line comment. Returns LineComment TokenType.
     fn line_comment(&mut self) -> TokenType {
         if self.prev_char() == '/' && self.next_char() == '/' {
             self.next_char();
@@ -423,6 +428,7 @@ impl <'a> Lexer<'a>{
         LineComment { doc_style: check_doc,}
     }
 
+    /// Checks for if a value is a block comment. Returns LineComment TokenType.
     fn block_comment(&mut self) -> TokenType{
         if self.prev_char() == '/' && self.next_char() == '*' {
             self.next_char();
@@ -450,6 +456,7 @@ impl <'a> Lexer<'a>{
         self.consume_until('\u{000A}');
         BlockComment { doc_style: check_doc, terminated: false }
     }
+
     /// Used to check and remove metadata at the beginning of certain rust files.
     /// Will handle ---, use, //!, and #![ These are common pieces of metadata that are not compiled the same as traditional programming languages.
     fn frontmatter(&mut self) -> TokenType{
@@ -533,6 +540,8 @@ impl <'a> Lexer<'a>{
         }
     }
 
+    /// Checks for identifier or keyword with use of a test string.
+    /// If that test string matches a keyword we return keyword, otherwise we check if its invalid or identifier.
     fn identifier_or_keyword(&mut self) -> TokenType{
         let mut test_string = String::new();
         test_string.push(self.current_char());
@@ -571,21 +580,8 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    // fn unkwn_prefix(&mut self) -> TokenType{
-    //     debug_assert!();
-    //     UnknownPrefix
-    // }
-    //
-    // fn unkwn_prefix_lifetime(&mut self) -> TokenType{
-    //     debug_assert!();
-    //     UnknownPrefixLifetime
-    // }
-    //
-    // fn grd_str_prefix(&mut self) -> TokenType{
-    //     debug_assert!();
-    //     GuardedStrPrefix
-    // }
-    //
+    /// Checks for if a value is a lifetime and returns true.
+    /// Used in multiple functions to help check for base lifetime then other functions check for other params.
     fn lifetime(&mut self, ) -> bool{
         self.consume_while(|c: char| unicode_xid::UnicodeXID::is_xid_start(c));
         if Self::check_whitespace(self.next_char()) || self.next_char() == ',' || self.next_char() == ':' ||  self.next_char() == '>' {
@@ -597,7 +593,7 @@ impl <'a> Lexer<'a>{
     }
 
     /// Check for r# symbol if raw, then check rest of value for lifetime
-    /// Raw values evaluate cha by char while ignoring escape sequences.
+    /// Raw values evaluate char by char while ignoring escape sequences.
     fn raw_lifetime(&mut self) -> bool{
         if self.next_char() == '\'' {
             self.move_chars(1);
@@ -615,8 +611,7 @@ impl <'a> Lexer<'a>{
     }
 
 
-    /// Ex: c"\u{00E6}";
-    /// Identified by c"<actualitem>"
+    /// Chars a lifetimes use the same apostrophe to start so checks for tokentype by calling different bool functions.
     fn char_and_lifetime_check(&mut self) -> TokenType {
         let saved_position = self.current_position;
         if self.lifetime() {
@@ -631,6 +626,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
+    /// Checks if token is a string literal via use of double_quote_string.
     fn string_check(&mut self) -> TokenType{
         if self.double_quote_string(){
             StringLiteral
@@ -640,9 +636,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// Ex: c"\u{00E6}";
-    /// Identified by c"<actualitem>"
-    /// NEED TO HANDLE cr# strings
+    /// Checks if item is a c string Ex:c"help"
     fn c_string_check(&mut self) -> TokenType {
         self.move_chars(1);
         if self.double_quote_string(){
@@ -653,7 +647,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// Ex: cr#"\u{00E6}";
+    /// Checks if item is a raw c string Ex:cr#"help"#
     fn raw_c_string_check(&mut self, len: u32) -> TokenType {
         self.move_chars(1);
         if self.check_raw_string(len) == Ok(len) {
@@ -664,8 +658,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// /// Ex: b"\u{00E6}";
-    /// Identified by b"<actualitem>"
+    /// Checks if item is a byte string Ex:b"help"
     fn byte_string_check(&mut self) -> TokenType{
         self.move_chars(1);
         if self.double_quote_string(){
@@ -676,8 +669,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    /// Ex: br#"\u{00E6}";
-    /// Identified by br#"<actualitem>"
+    /// Checks if item is a raw byte string Ex:br#"help"#
     fn raw_byte_string_check(&mut self, len: u32) -> TokenType{
         self.move_chars(1);
         if self.check_raw_string(len) == Ok(len) {
@@ -688,7 +680,7 @@ impl <'a> Lexer<'a>{
         }
     }
 
-    // Cant simply call string function since raw strings ignore escape characters.
+    /// Checks if item is a raw string Ex: r#"help"#
     fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
         if self.check_raw_string(len) == Ok(len){
             RawStringLiteral
