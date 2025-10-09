@@ -223,7 +223,8 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Comment everything, check each value, fix what is needed. Check for missing items. Then test basic hello world.
+/// TODO: PRIORITY!!!!!!!:  Next are String Literals to verify.
+/// TODO: Floating points are not being read properly.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -253,11 +254,13 @@ impl <'a> Lexer<'a>{
                 },
                 '0'..='9' => self.handle_number(c),
                 'c' => match self.next_char(){
+                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     '"' => self.c_string_check(),
                     'r' => self.raw_c_string_check(self.input.len() as u32),
                     _ => Unknown
-                },
+                }
                 'b' => match self.next_char(){
+                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     '"' => self.byte_string_check(),
                     'r' => self.raw_byte_string_check(self.input.len() as u32),
                     _ => Unknown
@@ -271,7 +274,7 @@ impl <'a> Lexer<'a>{
                     },
                     _ => Unknown
                 },
-                c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier_or_keyword(),
+                c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                 '\'' => self.char_and_lifetime_check(),
                 '"' => self.string_check(),
                 ',' => Comma,
@@ -542,10 +545,12 @@ impl <'a> Lexer<'a>{
 
     /// Checks for identifier or keyword with use of a test string.
     /// If that test string matches a keyword we return keyword, otherwise we check if its invalid or identifier.
+    ///
+    /// CERTAIN KEYWORDS ARE BEING CUT OFF
     fn identifier_or_keyword(&mut self) -> TokenType{
         let mut test_string = String::new();
         test_string.push(self.current_char());
-        while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_ascii(){
+        while unicode_xid::UnicodeXID::is_xid_continue(self.next_char()) && self.next_char().is_alphabetic(){
             test_string.push(self.next_char());
             self.move_chars(1);
         }
