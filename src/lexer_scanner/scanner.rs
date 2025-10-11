@@ -133,6 +133,7 @@ pub(crate) enum TokenType {
     StringLiteral,
     RawStringLiteral,
     CStringLiteral,
+    RawCStringLiteral,
     ByteLiteral,
     ByteStringLiteral{
         terminated: bool
@@ -223,7 +224,8 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!:  Next are String Literals to verify.
+/// TODO: PRIORITY!!!!!!!:  Certain byte strings and raw byte strings failing. (Currently receiving InvalidIdentifier)
+/// Ex: b"foo #\"# bar"|||||||| br##"foo #"# bar"##||||||| br"\x52";
 /// TODO: Floating points are not being read properly.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -253,16 +255,26 @@ impl <'a> Lexer<'a>{
                     _ => Minus
                 },
                 '0'..='9' => self.handle_number(c),
+
+                /// NEED TO UPDATE LOGIC PATHING FOR C STRINGS!!!!!!!!!!!!!!
                 'c' => match self.next_char(){
-                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     '"' => self.c_string_check(),
-                    'r' => self.raw_c_string_check(self.input.len() as u32),
+                    'r' => match self.second_char(){
+                        '"' => self.raw_c_string_check(self.input.len() as u32),
+                        c => self.identifier_or_keyword(),
+                    }
+                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     _ => Unknown
                 }
+
+                /// NEED TO UPDATE LOGIC PATHING FOR B STRINGS!!!!!!!!!!!!!!
                 'b' => match self.next_char(){
-                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     '"' => self.byte_string_check(),
-                    'r' => self.raw_byte_string_check(self.input.len() as u32),
+                    'r' => match self.second_char() {
+                        '"' => self.raw_byte_string_check(self.input.len() as u32),
+                        c => self.identifier_or_keyword(),
+                    },
+                    c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     _ => Unknown
                 },
                 /// Using multiple match statements here since the raw strings and identifiers have multiple pieces of overlap.
@@ -641,6 +653,16 @@ impl <'a> Lexer<'a>{
         }
     }
 
+    /// Checks if item is a raw string Ex: r#"help"#
+    fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
+        if self.check_raw_string(len) == Ok(len){
+            RawStringLiteral
+        }
+        else{
+            Unknown
+        }
+    }
+
     /// Checks if item is a c string Ex:c"help"
     fn c_string_check(&mut self) -> TokenType {
         self.move_chars(1);
@@ -656,7 +678,7 @@ impl <'a> Lexer<'a>{
     fn raw_c_string_check(&mut self, len: u32) -> TokenType {
         self.move_chars(1);
         if self.check_raw_string(len) == Ok(len) {
-            RawStringLiteral
+            RawCStringLiteral
         }
         else{
             Unknown
@@ -679,16 +701,6 @@ impl <'a> Lexer<'a>{
         self.move_chars(1);
         if self.check_raw_string(len) == Ok(len) {
             RawByteLiteral
-        }
-        else{
-            Unknown
-        }
-    }
-
-    /// Checks if item is a raw string Ex: r#"help"#
-    fn raw_double_quote_string(&mut self, len: u32) -> TokenType {
-        if self.check_raw_string(len) == Ok(len){
-            RawStringLiteral
         }
         else{
             Unknown
