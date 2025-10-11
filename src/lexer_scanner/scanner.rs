@@ -224,8 +224,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!:  Certain byte strings and raw byte strings failing. (Currently receiving InvalidIdentifier)
-/// Ex: b"foo #\"# bar"|||||||| br##"foo #"# bar"##||||||| br"\x52";
+/// TODO: PRIORITY!!!!!!!:  Fix Floating points => Then fix identifiers in digits.
 /// TODO: Floating points are not being read properly.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
@@ -858,6 +857,24 @@ impl <'a> Lexer<'a>{
     fn handle_number(&mut self, c: char) -> TokenType {
         let mut base = Base::Decimal;
 
+        // Check for Float Values
+        if self.next_char() == '.' && self.second_char().is_ascii_digit() {
+            let empty_expo:bool;
+            self.next_char();
+            self.handle_float();
+
+            return match self.next_char() {
+                // Handle scientific notation numbers.
+                'e' | 'E' => {
+                    self.next_char();
+                    empty_expo = self.handle_float();
+                    FloatLiteral { base, empty_exponent: empty_expo }
+                }
+                _ => FloatLiteral { base, empty_exponent: false }
+            }
+        }
+
+        /// Float is getting caught here due to zeroes.
         if c == '0' {
             match self.next_char() {
                 'b' => {
@@ -884,28 +901,12 @@ impl <'a> Lexer<'a>{
                 '0'..='9' | '_' => {
                     self.handle_decimal();
                     IntegerLiteral { base, empty_int: false };
+
                 }
                 _ => return IntegerLiteral { base, empty_int: false },
             }
         } else {
             self.handle_decimal();
-        }
-
-        // Check for Float Values
-        if self.next_char() == '.' && self.second_char().is_ascii_digit() {
-            let empty_expo:bool;
-            self.next_char();
-            self.handle_float();
-
-            return match self.next_char() {
-                // Handle scientific notation numbers.
-                'e' | 'E' => {
-                    self.next_char();
-                    empty_expo = self.handle_float();
-                    FloatLiteral { base, empty_exponent: empty_expo }
-                }
-                _ => FloatLiteral { base, empty_exponent: false }
-            }
         }
         // Default case: return integer
         IntegerLiteral { base, empty_int: false }
