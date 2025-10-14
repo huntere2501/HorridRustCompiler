@@ -72,6 +72,29 @@ static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
+static BASIC_TYPES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "i8",
+        "u8",
+        "i16",
+        "u16",
+        "i32",
+        "u32",
+        "i64",
+        "u64",
+        "i128",
+        "u128",
+        "isize",
+        "usize",
+        "f32",
+        "f64",
+        "true",
+        "false",
+        "char",
+        "String",
+    ])
+});
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum DocStyle {
     /// Used to handle all types of comment types that Rust has.
@@ -224,8 +247,7 @@ pub(crate) struct Lexer<'a> {
 
 
 /// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!:  Fix Floating points => Then fix identifiers in digits.
-/// TODO: Floating points are not being read properly.
+/// TODO: PRIORITY!!!!!!!: Fix identifiers in digits, EX: 123i32; <= This is basic rust typecasting.
 /// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
@@ -254,19 +276,15 @@ impl <'a> Lexer<'a>{
                     _ => Minus
                 },
                 '0'..='9' => self.handle_number(c),
-
-                /// NEED TO UPDATE LOGIC PATHING FOR C STRINGS!!!!!!!!!!!!!!
-                'c' => match self.next_char(){
+                'c' => match self.next_char() {
                     '"' => self.c_string_check(),
-                    'r' => match self.second_char(){
+                    'r' => match self.second_char() {
                         '"' => self.raw_c_string_check(self.input.len() as u32),
                         c => self.identifier_or_keyword(),
                     }
                     c if unicode_xid::UnicodeXID::is_xid_continue(c) => self.identifier_or_keyword(),
                     _ => Unknown
                 }
-
-                /// NEED TO UPDATE LOGIC PATHING FOR B STRINGS!!!!!!!!!!!!!!
                 'b' => match self.next_char(){
                     '"' => self.byte_string_check(),
                     'r' => match self.second_char() {
@@ -392,7 +410,7 @@ impl <'a> Lexer<'a>{
 
 
     /// Uses ASCII codes to check if a value is equal to multiple whitespace possibilities.
-    pub fn check_whitespace(c: char) -> bool {
+    fn check_whitespace(c: char) -> bool {
         // Stolen from official rust compiler, since whitespace check will practically be the same.
         // This is Pattern_White_Space.
         //
@@ -875,8 +893,8 @@ impl <'a> Lexer<'a>{
         }
 
         /// Float is getting caught here due to zeroes.
-        if c == '0' {
-            match self.next_char() {
+        if c == '0' && self.next_char() != 'i' && self.next_char() != 'u' {
+                match self.next_char() {
                 'b' => {
                     self.move_chars(1);
                     base = Base::Binary;
@@ -901,15 +919,30 @@ impl <'a> Lexer<'a>{
                 '0'..='9' | '_' => {
                     self.handle_decimal();
                     IntegerLiteral { base, empty_int: false };
-
                 }
-                _ => return IntegerLiteral { base, empty_int: false },
+                _ => ()
             }
         } else {
             self.handle_decimal();
         }
         // Default case: return integer
         IntegerLiteral { base, empty_int: false }
+    }
+
+    fn check_data_type(&mut self) -> bool{
+        let mut data_flag: bool = true;
+        println!("{:?}", self.current_char());
+        if self.next_char() == 'i' || self.next_char() == 'u' {
+            let mut type_string: String = String::new();
+            while self.next_char() != EOF_CHAR && !Self::check_whitespace(self.next_char()) && self.next_char() != ';' {
+                type_string.push(self.current_char());
+                self.move_chars(1);
+            }
+            if !BASIC_TYPES.contains(&*type_string) {
+                data_flag = false
+            }
+        }
+        data_flag
     }
 
     fn handle_decimal(&mut self) -> bool{
@@ -921,6 +954,7 @@ impl <'a> Lexer<'a>{
                     self.move_chars(1);
                 },
                 '_' => {self.move_chars(1);},
+                'i' | 'u' => dec_flag = self.check_data_type(),
                 _ => break,
             }
         }
@@ -939,6 +973,7 @@ impl <'a> Lexer<'a>{
                 '_' => {self.move_chars(1);},
                 _ => break,
             }
+            hex_flag = self.check_data_type();
         }
         hex_flag
     }
@@ -955,6 +990,7 @@ impl <'a> Lexer<'a>{
                 '_' => {self.move_chars(1);},
                 _ => break,
             }
+            oct_flag = self.check_data_type();
         }
         oct_flag
     }
@@ -971,6 +1007,7 @@ impl <'a> Lexer<'a>{
                 '_' => {self.move_chars(1);},
                 _ => break,
             }
+            bin_flag = self.check_data_type();
         }
         bin_flag
     }
@@ -986,6 +1023,7 @@ impl <'a> Lexer<'a>{
                 '_' => {self.move_chars(1);},
                 _ => break,
             }
+            flt_flag = self.check_data_type();
         }
         flt_flag
     }
