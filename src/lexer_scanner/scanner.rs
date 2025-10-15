@@ -187,6 +187,7 @@ pub(crate) enum TokenType {
     Tilde,
     Question,
     Colon,
+    SemiColon,
     Dollar,
     Eq,
     Bang,
@@ -244,11 +245,6 @@ pub(crate) struct Lexer<'a> {
     current_position: usize,
     prev_character: char,
 }
-
-
-/// Multiple TODOs
-/// TODO: PRIORITY!!!!!!!: Fix identifiers in digits, EX: 123i32; <= This is basic rust typecasting.
-/// TODO: Be able to read and tokenize a simple Hello World in Rust.
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
@@ -319,6 +315,7 @@ impl <'a> Lexer<'a>{
                 '~' => Tilde,
                 '?' => Question,
                 ':' => Colon,
+                ';' => SemiColon,
                 '$' => Dollar,
                 '=' => Eq,
                 '!' => Bang,
@@ -586,7 +583,8 @@ impl <'a> Lexer<'a>{
         if KEYWORDS.contains(&*test_string) {
             Keyword
         }
-        else if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
+        // We check for next character being anything that might indicate a macro or beginning of function creation/call.
+        else if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) || self.next_char() == '(' || self.next_char() == '!' {
             Identifier
         }
         else {
@@ -971,9 +969,9 @@ impl <'a> Lexer<'a>{
                     self.move_chars(1);
                 },
                 '_' => {self.move_chars(1);},
+                'i' | 'u' => hex_flag = self.check_data_type(),
                 _ => break,
             }
-            hex_flag = self.check_data_type();
         }
         hex_flag
     }
@@ -988,9 +986,9 @@ impl <'a> Lexer<'a>{
                     self.move_chars(1);
                 },
                 '_' => {self.move_chars(1);},
+                'i' | 'u' => oct_flag = self.check_data_type(),
                 _ => break,
             }
-            oct_flag = self.check_data_type();
         }
         oct_flag
     }
@@ -1005,9 +1003,9 @@ impl <'a> Lexer<'a>{
                     self.move_chars(1);
                 },
                 '_' => {self.move_chars(1);},
+                'i' | 'u' => bin_flag = self.check_data_type(),
                 _ => break,
             }
-            bin_flag = self.check_data_type();
         }
         bin_flag
     }
@@ -1021,9 +1019,9 @@ impl <'a> Lexer<'a>{
                     self.move_chars(1);
                 },
                 '_' => {self.move_chars(1);},
+                'i' | 'u' => flt_flag = self.check_data_type(),
                 _ => break,
             }
-            flt_flag = self.check_data_type();
         }
         flt_flag
     }
