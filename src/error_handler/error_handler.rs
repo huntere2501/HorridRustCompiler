@@ -1,6 +1,3 @@
-use std::collections::{HashMap, HashSet};
-use std::ffi::CString;
-use std::sync::LazyLock;
 /// Setup for Error Handling.
 
 // Need to create a template for errors
@@ -17,14 +14,14 @@ use std::sync::LazyLock;
 // I would need to edit my lexer to handle errors based on the class I made here.
 
 // Need to review parts of a compiler
-/// Lexical Analyzer =
-/// Syntax Analyzer =
+/// Lexical Analyzer = Malformed Tokens, Incorrect Token Syntax, Invalid Characters
+/// Syntax Analyzer = Basic syntax (duh), missing semicolons, unbalanced parentheses.
 /// Semantic Anaylzer =
 /// Intermediate Code =
 /// Code Optimizer =
 /// Code Generator =
 
-use crate::lexer_scanner::scanner::{Lexer, TokenType};
+use std::collections::{HashMap};
 
 static INTEGER_RANGES: HashMap<&'static str, (i128, i128)> = HashMap::from([
     // Signed integers
@@ -44,14 +41,21 @@ static INTEGER_RANGES: HashMap<&'static str, (i128, i128)> = HashMap::from([
     ("usize", (0, 18_446_744_073_709_551_615)), // 64-bit
 ]);
 
-struct ErrorHandler {
-    error_type: str,
-    description: str,
-    error_num: str
+pub(crate) struct ErrorHandler<'a>  {
+    error_type: &'a str,
+    description: &'a str,
+    error_num: &'a str
 
 }
 
 impl ErrorHandler {
+    fn new<'a>(error_type: &'a str, description: &'a str, error_num:&'a str) -> Self {
+        ErrorHandler{error_type, description, error_num}
+    }
 
-
+    fn print_err(&self){
+        println!("Error Type:{:?}", self.error_type);
+        println!("Description:{:?}", self.description);
+        println!("Error Num:{:?}", self.error_num);
+    }
 }
