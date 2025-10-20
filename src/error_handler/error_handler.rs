@@ -1,4 +1,6 @@
 /// Setup for Error Handling.
+///
+/// TODO: NEED TO CREATE LIST OF ERROR HANDLER CODES (CUSTOM)
 
 // Need to create a template for errors
 // Ex: Type of error, name of error, description
@@ -49,13 +51,13 @@ pub(crate) struct ErrorHandler<'a>  {
 }
 
 impl ErrorHandler {
-    fn new<'a>(error_type: &'a str, description: &'a str, error_num:&'a str) -> Self {
+    pub fn new<'a>(error_type: &'a str, description: &'a str, error_num:&'a str) -> Self {
         ErrorHandler{error_type, description, error_num}
     }
 
-    fn print_err(&self){
-        println!("Error Type:{:?}", self.error_type);
-        println!("Description:{:?}", self.description);
-        println!("Error Num:{:?}", self.error_num);
+    pub fn print_err(&self){
+        println!("Error Type: {:?}\n", self.error_type);
+        println!("Description: {:?}\n", self.description);
+        println!("Error Num: {:?}\n", self.error_num);
     }
 }

@@ -6,6 +6,7 @@ Much like the official rust compiler, the point of this Lexer is to break down R
 */
 use TokenType::*;
 use crate::lexer_scanner::scanner::Whitespace;
+use crate::error_handler::error_handler::ErrorHandler;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
@@ -588,6 +589,8 @@ impl <'a> Lexer<'a>{
             Identifier
         }
         else {
+            let error: ErrorHandler = ErrorHandler::new("Invalid Identifier", "Identifier has characters that are incorrect or structured incorrectly.", "L1");
+            ErrorHandler::print_err(&error);
             InvalidIdentifier
         }
     }
@@ -607,6 +610,8 @@ impl <'a> Lexer<'a>{
             if self.current_char() == EOF_CHAR || Self::check_whitespace(self.next_char()) {
                 RawIdentifier
             } else {
+                let error: ErrorHandler = ErrorHandler::new("Invalid Raw Identifier", "Raw Identifier has characters that are incorrect or structured incorrectly.", "L2");
+                ErrorHandler::print_err(&error);
                 InvalidIdentifier
             }
         }
@@ -653,6 +658,8 @@ impl <'a> Lexer<'a>{
             if self.single_quote_string() {
                 CharLiteral { terminated: false }
             } else {
+                let error: ErrorHandler = ErrorHandler::new("Open Single Quote", "Single quote didnt match with a closed char or lifetime.", "L3");
+                ErrorHandler::print_err(&error);
                 Unknown
             }
         }
@@ -664,6 +671,8 @@ impl <'a> Lexer<'a>{
             StringLiteral
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("Unclosed Double Quotes", "Double quotes were opened but never closed.", "L4");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -674,6 +683,8 @@ impl <'a> Lexer<'a>{
             RawStringLiteral
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("Unclosed Double Quotes", "Raw Double quotes were opened but never closed.", "L5");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -685,6 +696,8 @@ impl <'a> Lexer<'a>{
             CStringLiteral
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("False C String", "C string was opened but never properly closed.", "L6");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -696,6 +709,8 @@ impl <'a> Lexer<'a>{
             RawCStringLiteral
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("False Raw C String", "Raw C string was opened but never properly closed.", "L7");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -707,6 +722,8 @@ impl <'a> Lexer<'a>{
             ByteStringLiteral { terminated: false }
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("False Byte String", "Byte string was opened but never properly closed.", "L8");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -718,6 +735,8 @@ impl <'a> Lexer<'a>{
             RawByteLiteral
         }
         else{
+            let error: ErrorHandler = ErrorHandler::new("False Raw Byte String", "Raw Byte string was opened but never properly closed.", "L9");
+            ErrorHandler::print_err(&error);
             Unknown
         }
     }
@@ -834,6 +853,8 @@ impl <'a> Lexer<'a>{
         match self.current_char(){
             '"' => (),
             c => {
+                let error: ErrorHandler = ErrorHandler::new("Invalid Raw String Starter", "Raw String was identified but not properly started after the r", "L9");
+                ErrorHandler::print_err(&error);
                 return Err(RawStrError::InvalidStarter { bad_char: c });
             }
         }
@@ -850,6 +871,8 @@ impl <'a> Lexer<'a>{
                 }
             }
             if self.current_char() == EOF_CHAR {
+                let error: ErrorHandler = ErrorHandler::new("No Raw String Terminator", "Raw item was opened but never closed", "L10");
+                ErrorHandler::print_err(&error);
                 return Err(RawStrError::NoTerminator {
                     expected: start_count,
                     found: max_count,
@@ -924,6 +947,8 @@ impl <'a> Lexer<'a>{
             self.handle_decimal();
         }
         // Default case: return integer
+        let error: ErrorHandler = ErrorHandler::new("Failed Number Case", "All other number checks failed, returning default integer type.", "L11");
+        ErrorHandler::print_err(&error);
         IntegerLiteral { base, empty_int: false }
     }
 
