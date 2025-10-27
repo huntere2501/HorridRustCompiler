@@ -3,6 +3,7 @@ use crate::lexer_scanner::scanner::{Lexer, TokenType};
 mod syntax_parser;
 mod error_handler;
 mod symbol_table_mng;
+mod symbol_table;
 
 use std::fs;
 use crate::syntax_parser::Ast;
