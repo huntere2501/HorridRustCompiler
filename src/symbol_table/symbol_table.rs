@@ -1,45 +1,91 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::collections::HashSet;
 use crate::lexer_scanner::scanner::{TokenType};
 
-pub(crate) struct SymbolTableEntry<'a> {
-    token_type: &'a TokenType,
-    data_type: &'a str,
-    value: &'a i64,
-    scope: &'a str,
+static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        // Strict keywords (cannot be used as identifiers)
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn",
+        "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
+        "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+        "self", "Self", "static", "struct", "super", "trait", "true", "type",
+        "union", "unsafe", "use", "where", "while",
+        // Reserved keywords
+        "abstract", "become", "box", "do", "final", "macro", "override",
+        "priv", "typeof", "unsized", "virtual", "yield",
+        // Weak keywords
+        "macro_rules", "try",
+    ])
+});
+
+#[derive(Debug)]
+pub(crate) struct SymbolTableEntry {
+    token_type: TokenType,
+    value: i64,
+    scope: String,
 }
 
-pub(crate) struct SymbolTable<'a> {
-    entries: HashMap<&'a str, SymbolTableEntry<'a>>,
+#[derive(Debug)]
+pub(crate) struct SymbolTable {
+    entries: HashMap<String, SymbolTableEntry>,
 }
 
-impl <'a> SymbolTableEntry<'a>{
-    pub fn new(token_type: &TokenType, data_type: &str, value: &i64, scope: &str) -> Self{
-        Self {token_type, data_type, value, scope}
+impl SymbolTableEntry {
+    pub fn new(token_type: TokenType, value: i64, scope: String) -> Self {
+        Self { token_type, value, scope }
     }
 }
 
-impl <'a> SymbolTable<'a>{
-    pub fn new(entries: HashMap<&'a str, SymbolTableEntry<'a>>){
-        Self{entries};
+impl SymbolTable {
+    pub fn new() -> Self {
+        let mut entries = HashMap::new();
+
+        // Initialize with keywords
+        for &keyword in KEYWORDS.iter() {
+            entries.insert(
+                keyword.to_string(),
+                SymbolTableEntry {
+                    token_type: TokenType::Keyword,
+                    value: 0,
+                    scope: "global".to_string(),
+                }
+            );
+        }
+
+        Self { entries }
     }
 
-    pub fn insert(&mut self, lexeme: &str, token_type: &TokenType, data_type: &str, value: &i64, scope: &str){
+    pub fn insert(&mut self, lexeme: String, token_type: TokenType, value: i64, scope: String) {
         self.entries.insert(lexeme, SymbolTableEntry {
-            token_type: &token_type,
-            data_type,
+            token_type,
             value,
             scope,
         });
     }
-    pub fn remove(&mut self, lexeme: &str){
+
+    pub fn remove(&mut self, lexeme: &str) {
         self.entries.remove(lexeme);
     }
-    pub fn search(&mut self, lexeme: &str, token_type: &TokenType, data_type: &str, value: &i64, scope: &str){
-        if self.entries.contains_key(lexeme){
-            // Do Nothing
+
+    pub fn search_or_enter(&mut self, lexeme: String, token_type: TokenType, value: i64, scope: String) {
+        if self.entries.contains_key(&lexeme) {
+            return;
+        } else {
+            self.insert(lexeme, token_type, value, scope);
         }
-        else{
-            self.insert(lexeme, token_type, data_type, value, scope);
+    }
+
+    pub fn view_info(&self, lexeme: &str, info_type: &str) -> Option<String> {
+        if let Some(entry) = self.entries.get(lexeme) {
+            match info_type {
+                "token_type" => Some(format!("{:?}", entry.token_type)),
+                "value" => Some(entry.value.to_string()),
+                "scope" => Some(entry.scope.clone()),
+                _ => None
+            }
+        } else {
+            None
         }
     }
 }

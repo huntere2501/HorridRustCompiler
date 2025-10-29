@@ -6,70 +6,26 @@ Much like the official rust compiler, the point of this Lexer is to break down R
 */
 use TokenType::*;
 use crate::lexer_scanner::scanner::Whitespace;
-use crate::error_handler::error_handler::ErrorHandler;
+use crate::error_handler::error_handler::{ErrorHandler};
+use crate::symbol_table::symbol_table::{SymbolTable};
 use std::collections::HashSet;
 use std::sync::LazyLock;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 static KEYWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         // Strict keywords (cannot be used as identifiers)
-        "as",
-        "async",
-        "await",
-        "break",
-        "const",
-        "continue",
-        "crate",
-        "dyn",
-        "else",
-        "enum",
-        "extern",
-        "false",
-        "fn",
-        "for",
-        "if",
-        "impl",
-        "in",
-        "let",
-        "loop",
-        "match",
-        "mod",
-        "move",
-        "mut",
-        "pub",
-        "ref",
-        "return",
-        "self",
-        "Self",
-        "static",
-        "struct",
-        "super",
-        "trait",
-        "true",
-        "type",
-        "union",
-        "unsafe",
-        "use",
-        "where",
-        "while",
-
-        // Reserved keywords (reserved for future use)
-        "abstract",
-        "become",
-        "box",
-        "do",
-        "final",
-        "macro",
-        "override",
-        "priv",
-        "typeof",
-        "unsized",
-        "virtual",
-        "yield",
-
-        // Weak keywords (contextual, but good to include for completeness)
-        "macro_rules",
-        "try",
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn",
+        "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
+        "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+        "self", "Self", "static", "struct", "super", "trait", "true", "type",
+        "union", "unsafe", "use", "where", "while",
+        // Reserved keywords
+        "abstract", "become", "box", "do", "final", "macro", "override",
+        "priv", "typeof", "unsized", "virtual", "yield",
+        // Weak keywords
+        "macro_rules", "try",
     ])
 });
 
@@ -245,15 +201,17 @@ pub(crate) struct Lexer<'a> {
     input: &'a str,
     current_position: usize,
     prev_character: char,
+    symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
 /// Create a basic Lexer structure, start at zero for all values.
 impl <'a> Lexer<'a>{
-    pub fn new(input: &'a str) -> Self {
-        Self {input, current_position: 0, prev_character: EOF_CHAR}
+    pub fn new(input: &'a str, symbol_table: Rc<RefCell<SymbolTable>>) -> Self {
+        Self {input, current_position: 0, prev_character: EOF_CHAR, symbol_table}
     }
     /// Will read through each character in an input string and match the value to a token type.
-    pub fn next_token(&mut self) -> Token{
+    pub fn next_token(&mut self, ) -> Token{
+        let mut symbol_table = SymbolTable::new();
         // Check if we are at the end of our input.
         // Return EOF if we are and stop making tokens.
         let c:char  = self.current_char();
@@ -333,7 +291,13 @@ impl <'a> Lexer<'a>{
             self.move_chars(1);
             let end: usize = self.current_position;
             let literal: String = self.input[start..end].to_string();
-            let span: TextSpan = TextSpan::new(start, end, literal);
+            let span: TextSpan = TextSpan::new(start, end, literal.clone());
+            self.symbol_table.borrow_mut().search_or_enter(
+                literal.clone(),
+                token_type.clone(),
+                0,
+                "Global".parse().unwrap()
+            );
             Token::new(token_type, span)
         }
 

@@ -1,20 +1,21 @@
 mod lexer_scanner;
 use crate::lexer_scanner::scanner::{Lexer, TokenType};
+use crate::symbol_table::symbol_table::SymbolTable;
 mod syntax_parser;
 mod error_handler;
-mod symbol_table_mng;
 mod symbol_table;
 
 use std::fs;
-use crate::syntax_parser::Ast;
-use crate::syntax_parser::parser::Parser;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 
 fn main() {
     // Just for testing, the Parse will call upon the Lexer in actual runs
     let file_path: &str = "C:/Users/hunte/RustroverProjects/HorridRustCompiler/src/lexer_scanner/rust_test.rs";
     let input = &fs::read_to_string(file_path).unwrap();
-    let mut lexer  = Lexer::new(input);
+    let symbol_tab = Rc::new(RefCell::new(SymbolTable::new()));
+    let mut lexer  = Lexer::new(input, symbol_tab.clone());
     let mut tokens = Vec::new();
     loop {
         let token = lexer.next_token();
