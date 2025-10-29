@@ -23,25 +23,34 @@
 /// Code Optimizer =
 /// Code Generator =
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
-static INTEGER_RANGES: HashMap<&'static str, (i128, i128)> = HashMap::from([
-    // Signed integers
-    ("i8", (-128, 127)),
-    ("i16", (-32_768, 32_767)),
-    ("i32", (-2_147_483_648, 2_147_483_647)),
-    ("i64", (-9_223_372_036_854_775_808, 9_223_372_036_854_775_807)),
-    ("i128", (-170_141_183_460_469_231_731_687_303_715_884_105_728, 170_141_183_460_469_231_731_687_303_715_884_105_727)),
-    ("isize", (-9_223_372_036_854_775_808, 9_223_372_036_854_775_807)), // 64-bit
+#[derive(Debug, Clone)]
+enum IntRange {
+    Signed(i128, i128),
+    Unsigned(u128, u128),
+}
 
-    // Unsigned integers
-    ("u8", (0, 255)),
-    ("u16", (0, 65_535)),
-    ("u32", (0, 4_294_967_295)),
-    ("u64", (0, 18_446_744_073_709_551_615)),
-    ("u128", (0, 340_282_366_920_938_463_463_374_607_431_768_211_455)),
-    ("usize", (0, 18_446_744_073_709_551_615)), // 64-bit
-]);
+static INTEGER_RANGES: LazyLock<HashMap<&'static str, IntRange>> = LazyLock::new(|| {
+    HashMap::from([
+        // Signed integers
+        ("i8", IntRange::Signed(i8::MIN as i128, i8::MAX as i128)),
+        ("i16", IntRange::Signed(i16::MIN as i128, i16::MAX as i128)),
+        ("i32", IntRange::Signed(i32::MIN as i128, i32::MAX as i128)),
+        ("i64", IntRange::Signed(i64::MIN as i128, i64::MAX as i128)),
+        ("i128", IntRange::Signed(i128::MIN, i128::MAX)),
+        ("isize", IntRange::Signed(isize::MIN as i128, isize::MAX as i128)),
+
+        // Unsigned integers
+        ("u8", IntRange::Unsigned(u8::MIN as u128, u8::MAX as u128)),
+        ("u16", IntRange::Unsigned(u16::MIN as u128, u16::MAX as u128)),
+        ("u32", IntRange::Unsigned(u32::MIN as u128, u32::MAX as u128)),
+        ("u64", IntRange::Unsigned(u64::MIN as u128, u64::MAX as u128)),
+        ("u128", IntRange::Unsigned(u128::MIN, u128::MAX)),
+        ("usize", IntRange::Unsigned(usize::MIN as u128, usize::MAX as u128)),
+    ])
+});
 
 pub(crate) struct ErrorHandler<'a>  {
     error_type: &'a str,
@@ -50,8 +59,8 @@ pub(crate) struct ErrorHandler<'a>  {
 
 }
 
-impl ErrorHandler {
-    pub fn new<'a>(error_type: &'a str, description: &'a str, error_num:&'a str) -> Self {
+impl <'a> ErrorHandler<'a> {
+    pub fn new(error_type: &'a str, description: &'a str, error_num:&'a str) -> Self {
         ErrorHandler{error_type, description, error_num}
     }
 
