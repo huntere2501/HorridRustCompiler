@@ -1,9 +1,12 @@
 mod lexer_scanner;
-use crate::lexer_scanner::scanner::{Lexer, TokenType};
-use crate::symbol_table::symbol_table::SymbolTable;
 mod syntax_parser;
 mod error_handler;
 mod symbol_table;
+
+use crate::lexer_scanner::scanner::{Lexer, TokenType};
+use crate::symbol_table::symbol_table::SymbolTable;
+use crate::syntax_parser::parser::{Parser};
+use crate::syntax_parser::{Ast};
 
 use std::fs;
 use std::rc::Rc;
@@ -15,23 +18,23 @@ fn main() {
     let file_path: &str = "C:/Users/hunte/RustroverProjects/HorridRustCompiler/src/lexer_scanner/rust_test.rs";
     let input = &fs::read_to_string(file_path).unwrap();
     let symbol_tab = Rc::new(RefCell::new(SymbolTable::new()));
-    let mut lexer  = Lexer::new(input, symbol_tab.clone());
-    let mut tokens = Vec::new();
-    loop {
-        let token = lexer.next_token();
-        if token.kind == TokenType::EOF{
-            tokens.push(token);
-            break;
-        }
-        else{
-            tokens.push(token);
-        }
-    }
-    println!("{:?}", tokens);
-    // let mut ast: Ast = Ast::new();
-    // let mut parser: Parser = Parser::from_tokens(input);
-    // while let Some(stmt) = parser.next_statement(){
-    //     ast.add_statement(stmt);
+    // let mut lexer  = Lexer::new(input, symbol_tab.clone());
+    // let mut tokens = Vec::new();
+    // loop {
+    //     let token = lexer.next_token();
+    //     if token.kind == TokenType::EOF{
+    //         tokens.push(token);
+    //         break;
+    //     }
+    //     else{
+    //         tokens.push(token);
+    //     }
     // }
-    // ast.visualize();
+    // println!("{:?}", tokens);
+    let mut ast: Ast = Ast::new();
+    let mut parser: Parser = Parser::from_tokens(input);
+    while let Some(stmt) = parser.next_statement(){
+        ast.add_statement(stmt);
+    }
+    ast.visualize();
 }
