@@ -1,1 +1,0 @@
-mod symbol_table;
